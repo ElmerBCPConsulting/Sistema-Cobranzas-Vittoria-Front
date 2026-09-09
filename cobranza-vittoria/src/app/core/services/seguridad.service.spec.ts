@@ -1,0 +1,41 @@
+import { TestBed } from '@angular/core/testing';
+import { provideHttpClient } from '@angular/common/http';
+import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
+import { environment } from '../config/environment';
+import { SeguridadService } from './seguridad.service';
+
+describe('SeguridadService', () => {
+  let service: SeguridadService;
+  let http: HttpTestingController;
+
+  beforeEach(() => {
+    TestBed.configureTestingModule({
+      providers: [provideHttpClient(), provideHttpClientTesting()]
+    });
+    service = TestBed.inject(SeguridadService);
+    http = TestBed.inject(HttpTestingController);
+  });
+
+  afterEach(() => http.verify());
+
+  it('extrae roles cuando el backend responde con una envoltura', () => {
+    const roles = [{ idRol: 1, nombreRol: 'Administrador', activo: true }];
+    service.roles().subscribe(response => expect(response).toEqual(roles));
+
+    http.expectOne(`${environment.apiUrl}/api/seguridad/roles`).flush({ roles });
+  });
+
+  it('extrae usuarios cuando el backend responde con data anidada', () => {
+    const usuarios = [{ idUsuario: 1, usuarioLogin: 'admin', activo: true }];
+    service.usuarios().subscribe(response => expect(response).toEqual(usuarios));
+
+    http.expectOne(`${environment.apiUrl}/api/seguridad/usuarios`).flush({ data: { usuarios } });
+  });
+
+  it('acepta también un arreglo directo dentro de data', () => {
+    const roles = [{ idRol: 2, nombreRol: 'Residente', activo: true }];
+    service.roles().subscribe(response => expect(response).toEqual(roles));
+
+    http.expectOne(`${environment.apiUrl}/api/seguridad/roles`).flush({ data: roles });
+  });
+});
