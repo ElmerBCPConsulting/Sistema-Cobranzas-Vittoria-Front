@@ -8,7 +8,8 @@
 <section class="panel requer-list-panel">
   <div class="panel-title-row">
     <div class="panel-title">Listado</div>
-    <button type="button" class="btn btn-primary btn-sm" (click)="abrirModalNuevo()">+ Nuevo requerimiento</button>
+    <button *ngIf="puedeCrear" type="button" class="btn btn-primary btn-sm" (click)="abrirModalNuevo()">+ Nuevo
+      requerimiento</button>
   </div>
 
   <div class="filters-grid">
@@ -17,9 +18,12 @@
       <select [(ngModel)]="filtros.estado" (change)="load()">
         <option value="">Todos</option>
         <option value="Registrado">Registrado</option>
+        <option value="EnviadoAlmacen">Enviado a almacén</option>
         <option value="ValidadoAlmacen">Validado almacén</option>
-        <option value="Aprobado">Aprobado</option>
-        <option value="Atendido">Atendido</option>
+        <option value="AprobadoCoordinador">Aprobado por coordinador</option>
+        <option value="Rechazado">Rechazado</option>
+        <option value="EnviadoOC">Enviado a compras</option>
+        <option value="GeneradoOC">O.C. generada</option>
         <option value="Anulado">Anulado</option>
       </select>
     </div>
@@ -86,19 +90,26 @@
   <div *ngIf="detalle">
     <div class="detail-modal-head">
       <div class="detail-chips">
-        <span class="list-chip">N° {{ detalle.requerimiento?.numeroRequerimiento }}</span>
-        <span class="list-chip">{{ detalle.requerimiento?.estado }}</span>
-        <span class="list-chip">{{ detalle.requerimiento?.especialidades || '-' }}</span>
-        <span class="list-chip blocked-chip" *ngIf="!puedeEditarDetalle && !puedeEnviarOC">Bloqueado</span>
+        <span class="list-chip">N° {{ detalle.requerimiento.numeroRequerimiento }}</span>
+        <span class="list-chip">{{ detalle.requerimiento.estado }}</span>
+        <span class="list-chip">{{ detalle.requerimiento.especialidades || '-' }}</span>
+        <span class="list-chip blocked-chip" *ngIf="!puedeEditarDetalle && !tieneAccionesFlujo">Sin acciones
+          disponibles</span>
       </div>
       <div class="detail-actions">
         <button class="btn btn-primary" *ngIf="puedeEditarDetalle" (click)="editarDesdeDetalle()">Editar</button>
         <button class="btn btn-secondary" (click)="descargarPdfRequerimiento()">Descargar PDF</button>
-        <button class="btn btn-success" *ngIf="puedeEnviarOC" (click)="enviarAOC()">Enviar a O.C.</button>
+        <button class="btn btn-success" *ngIf="puedeEnviar" (click)="abrirAccion('enviar')">Enviar a almacén</button>
+        <button class="btn btn-success" *ngIf="puedeProcesarStock" (click)="abrirAccion('validar-almacen')">Procesar
+          stock</button>
+        <button class="btn btn-success" *ngIf="puedeAprobar" (click)="abrirAccion('aprobar')">Aprobar</button>
+        <button class="btn btn-danger" *ngIf="puedeRechazar" (click)="abrirAccion('rechazar')">Rechazar</button>
+        <button class="btn btn-success" *ngIf="puedeEnviarCompras" (click)="abrirAccion('enviar-compras')">Enviar a
+          compras</button>
       </div>
     </div>
 
-    <div class="table-wrap table-wrap--medium" *ngIf="detalle.items?.length">
+    <div class="table-wrap table-wrap--medium" *ngIf="detalle.items.length">
       <table>
         <thead>
           <tr>
@@ -120,15 +131,62 @@
         </tbody>
       </table>
     </div>
+
+    <div class="detail-card" *ngIf="auth.hasPermission('requerimientos.ver_depuracion_almacen')">
+      <div class="panel-title detail-card__title">Validaciones de almacén</div>
+      <div *ngIf="!detalle.validaciones.length" class="empty-state empty-state--tight">Sin validaciones registradas.</div>
+      <div class="table-wrap" *ngIf="detalle.validaciones.length">
+        <table>
+          <thead><tr><th>Resultado</th><th>Observación</th><th>Usuario</th><th>Fecha</th></tr></thead>
+          <tbody>
+            <tr *ngFor="let validacion of detalle.validaciones">
+              <td>{{ validacion.resultado || '-' }}</td>
+              <td>{{ validacion.observacion || '-' }}</td>
+              <td>{{ validacion.usuario || '-' }}</td>
+              <td>{{ validacion.fecha ? (validacion.fecha | date:'dd/MM/yyyy HH:mm') : '-' }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
   </div>
 </section>
+
+<div class="modal-backdrop" *ngIf="accionModalOpen">
+  <section class="modal-card action-modal-card" (click)="$event.stopPropagation()">
+    <div class="modal-header">
+      <div>
+        <div class="panel-title">{{ accionTitulo }}</div>
+        <div class="helper-text">La API volverá a validar el permiso y el estado del requerimiento.</div>
+      </div>
+      <button class="btn btn-ghost" type="button" [disabled]="procesandoAccion" (click)="cerrarAccion()">Cerrar</button>
+    </div>
+    <div class="field" *ngIf="accionActual === 'validar-almacen'">
+      <label>Resultado</label>
+      <select [(ngModel)]="accionResultado">
+        <option value="Conforme">Conforme</option>
+        <option value="Observado">Observado</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>Observación{{ accionActual === 'rechazar' || (accionActual === 'validar-almacen' && accionResultado === 'Observado') ? ' *' : '' }}</label>
+      <textarea rows="4" [(ngModel)]="accionObservacion" placeholder="Describe el motivo o resultado"></textarea>
+    </div>
+    <div class="toolbar form-actions">
+      <button class="btn btn-primary" type="button" [disabled]="procesandoAccion" (click)="ejecutarAccion()">
+        {{ procesandoAccion ? 'Procesando...' : 'Confirmar' }}
+      </button>
+      <button class="btn btn-ghost" type="button" [disabled]="procesandoAccion" (click)="cerrarAccion()">Cancelar</button>
+    </div>
+  </section>
+</div>
 
 <div class="design-modal-backdrop" *ngIf="formModalOpen" (click)="cerrarFormModal()"></div>
 <section class="panel panel--form requer-form-panel design-modal-card design-modal-card--xl" *ngIf="formModalOpen"
   (click)="$event.stopPropagation()">
   <button type="button" class="modal-close" (click)="cerrarFormModal()" aria-label="Cerrar">×</button>
   <div class="panel-title">{{ editando ? 'Editar requerimiento' : 'Nuevo requerimiento' }}</div>
-  <div class="helper-text">Número se genera automáticamente. Completa proyecto, solicitante, entrega e ítems.</div>
+  <div class="helper-text">Número se genera automáticamente. El solicitante se toma de la sesión actual.</div>
 
   <div class="form-grid two requer-form-grid">
     <div class="field auto-field">
@@ -146,17 +204,17 @@
         <option *ngFor="let p of proyectos" [ngValue]="p.idProyecto">{{ p.nombreProyecto }}</option>
       </select>
     </div>
-    <div class="field">
-      <label>Solicitante</label>
-      <select [(ngModel)]="form.idUsuarioSolicitante">
-        <option [ngValue]="null">Seleccionar</option>
-        <option *ngFor="let s of solicitantesCombo" [ngValue]="s.idUsuario" [disabled]="!s.idUsuario">{{ s.nombre }}
-        </option>
-      </select>
-    </div>
     <div class="field compact-field">
       <label>Fecha entrega</label>
       <input type="date" [(ngModel)]="form.fechaEntrega" />
+    </div>
+    <div class="field full-row">
+      <label>Descripción</label>
+      <input [(ngModel)]="form.descripcion" placeholder="Descripción del requerimiento" />
+    </div>
+    <div class="field full-row">
+      <label>Observación</label>
+      <textarea rows="3" [(ngModel)]="form.observacion" placeholder="Observación general"></textarea>
     </div>
   </div>
 

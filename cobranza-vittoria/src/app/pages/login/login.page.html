@@ -20,14 +20,15 @@
 
     <div class="field">
       <label>Usuario</label>
-      <input type="text" [(ngModel)]="form.usuarioLogin" placeholder="Tu usuario" (keyup.enter)="submit()" />
+      <input type="text" [(ngModel)]="form.usernameOrEmail" placeholder="Tu usuario o correo"
+        autocomplete="username" (keyup.enter)="submit()" />
     </div>
 
     <div class="field">
       <label>Contraseña</label>
       <div class="password-box">
         <input [type]="showPassword ? 'text' : 'password'" [(ngModel)]="form.password" placeholder="Tu contraseña"
-          (keyup.enter)="submit()" />
+          autocomplete="current-password" (keyup.enter)="submit()" />
         <button type="button" class="password-box__toggle" (click)="showPassword = !showPassword">
           {{ showPassword ? 'Ocultar' : 'Ver' }}
         </button>

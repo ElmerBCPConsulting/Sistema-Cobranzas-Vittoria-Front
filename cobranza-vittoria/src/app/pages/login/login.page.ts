@@ -16,7 +16,7 @@ export class LoginPage {
   loading = false;
   showPassword = false;
   form = {
-    usuarioLogin: '',
+    usernameOrEmail: '',
     password: ''
   };
 
@@ -30,14 +30,14 @@ export class LoginPage {
   submit(): void {
     if (this.loading) return;
 
-    if (!this.form.usuarioLogin.trim() || !this.form.password.trim()) {
+    if (!this.form.usernameOrEmail.trim() || !this.form.password.trim()) {
       this.notifications.show('Ingresa tu usuario y contraseña.', 'info');
       return;
     }
 
     this.loading = true;
     this.auth.login({
-      usuarioLogin: this.form.usuarioLogin.trim(),
+      usernameOrEmail: this.form.usernameOrEmail.trim(),
       password: this.form.password
     }).subscribe({
       next: () => {

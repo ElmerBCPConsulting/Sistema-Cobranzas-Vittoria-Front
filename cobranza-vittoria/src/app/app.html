@@ -39,7 +39,8 @@
               <span>Gestión de obra</span><span class="nav-toggle__chev">⌄</span>
             </button>
             <div class="nav-subpanel" *ngIf="isMenuOpen('gestionObra')">
-              <a routerLink="/requerimientos" routerLinkActive="active" (click)="closeMobileMenu()">Requerimientos</a>
+              <a *ngIf="canAccess(accessRules.requerimientos)" routerLink="/requerimientos" routerLinkActive="active"
+                (click)="closeMobileMenu()">Requerimientos</a>
               <a routerLink="/ordenes-compra" routerLinkActive="active" (click)="closeMobileMenu()">Órdenes de
                 compra</a>
               <a routerLink="/compras" routerLinkActive="active" (click)="closeMobileMenu()">Compras</a>
@@ -105,7 +106,7 @@
       </div>
 
       <!-- Módulo de seguridad -->
-      <div class="nav-section nav-section--collapsible">
+      <div class="nav-section nav-section--collapsible" *ngIf="canAccess(accessRules.controlAccesos)">
         <button type="button" class="nav-toggle" (click)="toggleMenu('controlAccesos')"
           [class.open]="isMenuOpen('controlAccesos')">
           <span>Control de Acceso</span><span class="nav-toggle__chev">⌄</span>

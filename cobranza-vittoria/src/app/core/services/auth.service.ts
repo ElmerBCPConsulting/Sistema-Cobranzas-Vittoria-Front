@@ -1,86 +1,129 @@
-import { Injectable } from '@angular/core';
+import { Injectable, signal } from '@angular/core';
+import { HttpClient } from '@angular/common/http';
 import { Router } from '@angular/router';
-import { Observable, map, tap } from 'rxjs';
-import { ApiService } from './api.service';
+import { Observable, finalize, map, tap } from 'rxjs';
+import { environment } from '../config/environment';
+import { canAccess } from '../auth/access-control.util';
+import { sessionFromTokens } from '../auth/jwt-claims.util';
+import { AccessRule, AuthTokensResponse, Session } from '../auth/session.models';
 
 export interface LoginPayload {
-  usuarioLogin: string;
+  usernameOrEmail: string;
   password: string;
-}
-
-export interface AuthSession {
-  idUsuario: number;
-  nombres: string;
-  apellidos?: string | null;
-  correo?: string | null;
-  usuarioLogin: string;
-  nombreRol?: string | null;
-  displayName: string;
 }
 
 @Injectable({ providedIn: 'root' })
 export class AuthService {
-  private readonly storageKey = 'vittoria.auth.session';
+  // Almacenamiento temporal aceptado por el contrato; la siguiente iteración debe migrar
+  // el refresh token a cookie HttpOnly para reducir exposición ante XSS.
+  private readonly accessTokenKey = 'vittoria.auth.accessToken';
+  private readonly refreshTokenKey = 'vittoria.auth.refreshToken';
+  private readonly expirationKey = 'vittoria.auth.expiration';
+  private readonly sessionState = signal<Session | null>(this.restoreSession());
 
-  constructor(private api: ApiService, private router: Router) { }
+  readonly currentSession = this.sessionState.asReadonly();
 
-  login(payload: LoginPayload): Observable<AuthSession> {
-    return this.api.http.post<any>(`${this.api.baseUrl}/api/auth/login`, payload).pipe(
-      map(res => this.normalizeSession(res)),
+  constructor(private http: HttpClient, private router: Router) { }
+
+  get session(): Session | null {
+    return this.sessionState();
+  }
+
+  login(payload: LoginPayload): Observable<Session> {
+    return this.http.post<AuthTokensResponse>(`${environment.apiUrl}/api/seguridad/auth/login`, payload).pipe(
+      map(response => this.normalizeResponse(response)),
       tap(session => this.persist(session))
     );
   }
 
-  get session(): AuthSession | null {
-    if (typeof window === 'undefined')
-      return null;
+  refresh(): Observable<Session> {
+    const refreshToken = this.session?.refreshToken;
+    if (!refreshToken) throw new Error('No existe un refresh token para renovar la sesión.');
 
-    const raw = window.localStorage.getItem(this.storageKey);
-
-    if (!raw) return null;
-    try {
-      return JSON.parse(raw) as AuthSession;
-    } catch {
-      return null;
-    }
-  }
-
-  isAuthenticated(): boolean {
-    return !!this.session;
+    return this.http.post<AuthTokensResponse>(`${environment.apiUrl}/api/seguridad/auth/refresh`, { refreshToken }).pipe(
+      map(response => this.normalizeResponse(response)),
+      // La respuesta se valida completa antes de reemplazar los tres valores rotados.
+      tap(session => this.persist(session))
+    );
   }
 
   logout(): void {
+    const refreshToken = this.session?.refreshToken;
+    if (!refreshToken) {
+      this.clearLocalSession();
+      return;
+    }
+
+    this.http.post<void>(`${environment.apiUrl}/api/seguridad/auth/logout`, { refreshToken }).pipe(
+      // La intención local de cerrar sesión prevalece incluso si el servidor no responde.
+      finalize(() => this.clearLocalSession())
+    ).subscribe({ error: () => undefined });
+  }
+
+  clearLocalSession(returnUrl?: string): void {
     if (typeof window !== 'undefined') {
-      window.localStorage.removeItem(this.storageKey);
+      window.localStorage.removeItem(this.accessTokenKey);
+      window.localStorage.removeItem(this.refreshTokenKey);
+      window.localStorage.removeItem(this.expirationKey);
+
+      // Limpieza de las claves antiguas para no dejar un perfil obsoleto tras migrar.
+      window.localStorage.removeItem('vittoria.auth.session');
       window.localStorage.removeItem('vittoria.profile.name');
       window.localStorage.removeItem('vittoria.profile.role');
       window.localStorage.removeItem('usuarioLogin');
     }
-    this.router.navigateByUrl('/login');
+    this.sessionState.set(null);
+    void this.router.navigate(['/login'], returnUrl ? { queryParams: { returnUrl } } : undefined);
   }
 
-  private persist(session: AuthSession): void {
-    if (typeof window === 'undefined') return;
-    window.localStorage.setItem(this.storageKey, JSON.stringify(session));
-    window.localStorage.setItem('vittoria.profile.name', session.displayName);
-    window.localStorage.setItem('vittoria.profile.role', session.nombreRol ?? 'Sin rol');
-    window.localStorage.setItem('usuarioLogin', session.usuarioLogin);
+  isAuthenticated(): boolean {
+    const session = this.session;
+    return !!session?.accessToken && !!session.refreshToken;
   }
 
-  private normalizeSession(res: any): AuthSession {
-    const nombres = String(res?.nombres ?? res?.Nombres ?? '').trim();
-    const apellidos = String(res?.apellidos ?? res?.Apellidos ?? '').trim();
-    const displayName = [nombres, apellidos]
-      .filter(Boolean).join(' ') || String(res?.usuarioLogin ?? res?.UsuarioLogin ?? 'Usuario');
+  isAccessTokenExpired(leewaySeconds = 0): boolean {
+    const expiration = this.session?.expiration;
+    if (!expiration) return true;
+    const expirationMs = Date.parse(expiration);
+    return !Number.isFinite(expirationMs) || expirationMs <= Date.now() + leewaySeconds * 1000;
+  }
 
-    return {
-      idUsuario: Number(res?.idUsuario ?? res?.IdUsuario ?? 0),
-      nombres,
-      apellidos,
-      correo: res?.correo ?? res?.Correo ?? null,
-      usuarioLogin: String(res?.usuarioLogin ?? res?.UsuarioLogin ?? ''),
-      nombreRol: res?.nombreRol ?? res?.NombreRol ?? null,
-      displayName
-    };
+  hasRole(role: string): boolean {
+    return this.session?.roles.includes(role) ?? false;
+  }
+
+  hasPermission(permission: string): boolean {
+    return this.session?.permisos.includes(permission) ?? false;
+  }
+
+  canAccess(rule?: AccessRule): boolean {
+    return canAccess(this.session, rule);
+  }
+
+  private normalizeResponse(response: AuthTokensResponse): Session {
+    if (!response?.token || !response?.refreshToken || !response?.expiration) {
+      throw new Error('La respuesta de autenticación no contiene los tokens requeridos.');
+    }
+    return sessionFromTokens(response.token, response.refreshToken, response.expiration);
+  }
+
+  private persist(session: Session): void {
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem(this.accessTokenKey, session.accessToken);
+      window.localStorage.setItem(this.refreshTokenKey, session.refreshToken);
+      window.localStorage.setItem(this.expirationKey, session.expiration);
+    }
+    this.sessionState.set(session);
+  }
+
+  private restoreSession(): Session | null {
+    if (typeof window === 'undefined') return null;
+
+    const accessToken = window.localStorage.getItem(this.accessTokenKey);
+    const refreshToken = window.localStorage.getItem(this.refreshTokenKey);
+    const expiration = window.localStorage.getItem(this.expirationKey);
+    if (!accessToken || !refreshToken || !expiration) return null;
+
+    return sessionFromTokens(accessToken, refreshToken, expiration);
   }
 }

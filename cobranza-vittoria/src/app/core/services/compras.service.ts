@@ -33,18 +33,6 @@ export class ComprasService {
     return this.api.http.put<any>(`${this.api.baseUrl}/api/compras/requerimientos/${id}`, dto);
   }
 
-  actualizarEstadoRequerimiento(id: number, dto: any) {
-    return this.api.http.patch<any>(`${this.api.baseUrl}/api/compras/requerimientos/${id}/estado`, dto);
-  }
-
-  enviarAOrdenCompra(id: number, idUsuario: number | null, observacion?: string) {
-    return this.api.http.patch<any>(`${this.api.baseUrl}/api/compras/requerimientos/${id}/estado`, {
-      estado: 'EnviadoOC',
-      observacion: observacion || '',
-      idUsuario
-    });
-  }
-
   ordenes(filters?: any) {
     const params = new URLSearchParams();
 

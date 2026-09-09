@@ -5,6 +5,8 @@ import { filter } from 'rxjs/operators';
 import { NotificationComponent } from './shared/components/notification/notification.component';
 import { TipoCambioComponent } from './shared/components/tipo-cambio/tipo-cambio.component';
 import { AuthService } from './core/services/auth.service';
+import { ACCESS_RULES } from './core/auth/access-control.util';
+import { AccessRule } from './core/auth/session.models';
 
 @Component({
   selector: 'app-root',
@@ -16,6 +18,7 @@ export class App {
   private readonly router = inject(Router);
   private readonly auth = inject(AuthService);
   private readonly cdr = inject(ChangeDetectorRef);
+  readonly accessRules = ACCESS_RULES;
 
   sidebarCollapsed = false;
   mobileMenuOpen = false;
@@ -44,11 +47,11 @@ export class App {
   }
 
   get profileName(): string {
-    return this.auth.session?.displayName || 'Administrador';
+    return this.auth.session?.usuarioLogin || this.auth.session?.correo || 'Usuario';
   }
 
   get profileRole(): string {
-    return this.auth.session?.nombreRol || 'Perfil local';
+    return this.auth.session?.roles.join(', ') || 'Sin rol';
   }
 
   get profileInitials(): string {
@@ -62,6 +65,10 @@ export class App {
 
   get isAuthenticated(): boolean {
     return this.auth.isAuthenticated();
+  }
+
+  canAccess(rule?: AccessRule): boolean {
+    return this.auth.canAccess(rule);
   }
 
   get isPresupuestoRoute(): boolean {

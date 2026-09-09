@@ -37,6 +37,18 @@ export class SeguridadService {
       ? this.api.http.put<any>(`${this.api.baseUrl}/api/seguridad/roles/${dto.idRol}`, dto)
       : this.api.http.post<any>(`${this.api.baseUrl}/api/seguridad/roles`, dto);
   }
+
+  asignarPermisosRol(idRol: number, idPermisos: number[]) {
+    // El backend normaliza repetidos; la UI además envía IDs únicos y nunca un arreglo vacío.
+    const uniqueIds = Array.from(new Set(idPermisos));
+    return this.api.http.post<void>(`${this.api.baseUrl}/api/seguridad/roles/${idRol}/permisos`, {
+      idPermisos: uniqueIds
+    });
+  }
+
+  quitarPermisoRol(idRol: number, idPermiso: number) {
+    return this.api.http.delete<void>(`${this.api.baseUrl}/api/seguridad/roles/${idRol}/permisos/${idPermiso}`);
+  }
   usuarios(activo?: boolean | null) {
     const qs = activo === undefined || activo === null ? '' : `?activo=${activo}`;
     return this.api.http.get<any[]>(`${this.api.baseUrl}/api/seguridad/usuarios${qs}`);

@@ -26,6 +26,7 @@ import { ProveedoresTerrenoPage } from './pages/proveedores-terreno/proveedores-
 import { GastosProyectoPage } from './pages/gastos-proyecto/gastos-proyecto.page';
 import { authGuard } from './core/guards/auth.guard';
 import { PermisosPage } from './pages/permisos/permisos.page';
+import { ACCESS_RULES } from './core/auth/access-control.util';
 
 export const routes: Routes = [
   { path: '', redirectTo: 'dashboard', pathMatch: 'full' },
@@ -42,7 +43,12 @@ export const routes: Routes = [
   { path: 'materiales', canActivate: [authGuard], component: MaterialesPage },
   { path: 'proyectos', canActivate: [authGuard], component: ProyectosPage },
   { path: 'unidades-medida', canActivate: [authGuard], component: UnidadesMedidaPage },
-  { path: 'requerimientos', canActivate: [authGuard], component: RequerimientosPage },
+  {
+    path: 'requerimientos',
+    canActivate: [authGuard],
+    component: RequerimientosPage,
+    data: { access: ACCESS_RULES.requerimientos }
+  },
   { path: 'ordenes-compra', canActivate: [authGuard], component: OrdenesCompraPage },
   { path: 'compras', canActivate: [authGuard], component: ComprasPage },
   { path: 'kardex', canActivate: [authGuard], component: KardexPage },
@@ -59,6 +65,7 @@ export const routes: Routes = [
   {
     path: 'control-accesos',
     canActivate: [authGuard],
+    data: { access: ACCESS_RULES.controlAccesos },
     children: [
       { path: '', redirectTo: 'usuarios', pathMatch: 'full' },
       { path: 'usuarios', component: UsuariosPage },

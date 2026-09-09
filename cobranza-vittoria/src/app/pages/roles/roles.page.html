@@ -59,6 +59,28 @@
       <div class="field" style="grid-column:1/-1;"><label>Descripción</label><input [(ngModel)]="form.descripcion" />
       </div>
     </div>
+    <section class="role-permissions" *ngIf="form.idRol">
+      <div class="panel-title role-permissions__title">Permisos del rol</div>
+      <div class="helper-text">Selecciona uno o más permisos para asignarlos. Los claims de sesiones ya emitidas se
+        actualizarán al renovar o iniciar sesión nuevamente.</div>
+      <div class="role-permissions__grid">
+        <label class="permission-option" *ngFor="let permiso of permisos">
+          <input type="checkbox" [checked]="permisoSeleccionado(permiso.idPermiso)"
+            (change)="togglePermiso(permiso.idPermiso, $any($event.target).checked)" />
+          <span><strong>{{ permiso.nombre }}</strong><small>{{ permiso.codigo }}</small></span>
+        </label>
+      </div>
+      <button type="button" class="btn btn-secondary" [disabled]="guardandoPermisos || !idsPermisosSeleccionados.length"
+        (click)="asignarPermisos()">{{ guardandoPermisos ? 'Asignando...' : 'Asignar seleccionados' }}</button>
+
+      <div class="assigned-permissions" *ngIf="permisosAsignados.length">
+        <div class="helper-text">Asignados en esta vista:</div>
+        <button type="button" class="list-chip permission-chip" *ngFor="let permiso of permisosAsignados"
+          (click)="quitarPermiso(permiso)" [title]="'Quitar ' + permiso.nombre">
+          {{ permiso.nombre }} <span aria-hidden="true">×</span>
+        </button>
+      </div>
+    </section>
     <div class="toolbar" style="margin-top:14px;"><button class="btn btn-primary" (click)="save()"
         [disabled]="!form.nombreRol">Guardar</button><button class="btn btn-ghost" (click)="reset()">Limpiar</button>
     </div>

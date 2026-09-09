@@ -19,7 +19,7 @@ export interface RequerimientoCreate {
   idProyecto: number;
   descripcion?: string | null;
   fechaEntrega?: string | null;
-  idUsuarioSolicitante: number;
+  // El backend deriva al solicitante desde el JWT; nunca debe enviarlo el formulario.
   observacion?: string | null;
   items: RequerimientoItemCreate[];
 }
