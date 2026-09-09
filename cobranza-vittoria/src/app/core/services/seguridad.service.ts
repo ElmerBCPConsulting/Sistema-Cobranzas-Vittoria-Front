@@ -1,6 +1,7 @@
 import { Injectable } from '@angular/core';
 import { ApiService } from './api.service';
 import { CreatePermisoRequest, ListarPermisoResponse, Permiso, UpdatePermisoRequest } from '../../models/permisos.models';
+import { AsignarRolesRequest, UsuarioCreateRequest, UsuarioUpdateRequest } from '../../models/usuarios.models';
 import { map } from 'rxjs';
 
 @Injectable({ providedIn: 'root' })
@@ -59,10 +60,15 @@ export class SeguridadService {
     );
   }
   usuario(id: number) { return this.api.http.get<any>(`${this.api.baseUrl}/api/seguridad/usuarios/${id}`); }
-  crearUsuario(dto: any) { return this.api.http.post<any>(`${this.api.baseUrl}/api/seguridad/usuarios`, dto); }
-  actualizarUsuario(id: number, dto: any) { return this.api.http.put<any>(`${this.api.baseUrl}/api/seguridad/usuarios/${id}`, dto); }
-  asignarRol(id: number, idRol: number) {
-    return this.api.http.post<any>(`${this.api.baseUrl}/api/seguridad/usuarios/${id}/roles`, { idUsuario: id, idRol });
+  crearUsuario(dto: UsuarioCreateRequest) {
+    return this.api.http.post<any>(`${this.api.baseUrl}/api/seguridad/usuarios`, dto);
+  }
+  actualizarUsuario(id: number, dto: UsuarioUpdateRequest) {
+    return this.api.http.put<any>(`${this.api.baseUrl}/api/seguridad/usuarios/${id}`, dto);
+  }
+  asignarRoles(idUsuario: number, idRoles: number[]) {
+    const request: AsignarRolesRequest = { idRoles: Array.from(new Set(idRoles.map(Number).filter(id => id > 0))) };
+    return this.api.http.post<void>(`${this.api.baseUrl}/api/seguridad/usuarios/${idUsuario}/roles`, request);
   }
 
   private extractList(response: unknown, propertyNames: string[]): any[] {

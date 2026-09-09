@@ -60,21 +60,22 @@
       <div class="field"><label>Apellidos</label><input [(ngModel)]="form.apellidos"></div>
       <div class="field"><label>Correo</label><input [(ngModel)]="form.correo"></div>
       <div class="field"><label>Login</label><input [(ngModel)]="form.usuarioLogin"></div>
-      <div class="field"><label>Contraseña</label><input [(ngModel)]="form.passwordHash"></div>
+      <div class="field"><label>Contraseña{{ form.idUsuario ? ' (dejar vacía para conservar)' : '' }}</label>
+        <input type="password" [(ngModel)]="form.password" autocomplete="new-password"></div>
       <div class="field"><label>Estado</label><select [(ngModel)]="form.activo">
           <option [ngValue]="true">Activo</option>
           <option [ngValue]="false">Inactivo</option>
         </select></div>
     </div>
     <div class="toolbar" style="margin-top:14px;"><button class="btn btn-primary" (click)="save()"
-        [disabled]="!form.nombres || !form.usuarioLogin || !form.passwordHash">Guardar</button><button
+        [disabled]="!form.nombres || !form.usuarioLogin || (!form.idUsuario && !form.password)">Guardar</button><button
         class="btn btn-ghost" (click)="reset()">Limpiar</button></div>
     <div class="panel" style="margin-top:18px; padding:16px;">
       <div class="panel-title" style="font-size:1rem;">Asignar rol</div>
       <div class="form-grid two">
         <div class="field"><label>Rol</label><select [(ngModel)]="roleId">
             <option [ngValue]="null">Seleccionar</option>
-            <option *ngFor="let rol of roles" [ngValue]="rol.idRol">{{ rol.nombreRol }}</option>
+            <option *ngFor="let rol of roles" [ngValue]="getRolId(rol)">{{ getRolNombre(rol) }}</option>
           </select></div>
       </div>
       <div class="toolbar"><button class="btn btn-success" (click)="asignarRol()"

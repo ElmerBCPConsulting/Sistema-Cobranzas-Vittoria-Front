@@ -31,6 +31,15 @@ export function extraerMensajeError(err: any, fallback = 'Ocurrió un error ines
     return `${cabecera} ${detalle}`;
   }
 
+  // ASP.NET Core publica errores de modelo bajo `errors: { Campo: [mensajes] }`.
+  if (body?.errors && typeof body.errors === 'object') {
+    const messages = Object.values(body.errors)
+      .flatMap(value => Array.isArray(value) ? value : [value])
+      .map(String)
+      .filter(Boolean);
+    if (messages.length) return messages.join(' ');
+  }
+
   if (body?.message) return String(body.message);
   if (typeof err?.message === 'string' && err.message) return err.message;
 
