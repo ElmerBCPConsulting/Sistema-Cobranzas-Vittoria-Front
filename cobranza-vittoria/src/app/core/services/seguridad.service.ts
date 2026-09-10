@@ -2,6 +2,7 @@ import { Injectable } from '@angular/core';
 import { ApiService } from './api.service';
 import { CreatePermisoRequest, ListarPermisoResponse, Permiso, UpdatePermisoRequest } from '../../models/permisos.models';
 import { AsignarRolesRequest, UsuarioCreateRequest, UsuarioUpdateRequest } from '../../models/usuarios.models';
+import { AsignarPermisosRolRequest, RolConPermisosResponse } from '../../models/roles.models';
 import { map } from 'rxjs';
 
 @Injectable({ providedIn: 'root' })
@@ -42,12 +43,15 @@ export class SeguridadService {
       : this.api.http.post<any>(`${this.api.baseUrl}/api/seguridad/roles`, dto);
   }
 
+  obtenerRolConPermisos(idRol: number) {
+    return this.api.http.get<RolConPermisosResponse>(
+      `${this.api.baseUrl}/api/seguridad/roles/${idRol}/permisos`
+    );
+  }
+
   asignarPermisosRol(idRol: number, idPermisos: number[]) {
-    // El backend normaliza repetidos; la UI además envía IDs únicos y nunca un arreglo vacío.
-    const uniqueIds = Array.from(new Set(idPermisos));
-    return this.api.http.post<void>(`${this.api.baseUrl}/api/seguridad/roles/${idRol}/permisos`, {
-      idPermisos: uniqueIds
-    });
+    const body: AsignarPermisosRolRequest = { idPermisos: Array.from(new Set(idPermisos)) };
+    return this.api.http.post<void>(`${this.api.baseUrl}/api/seguridad/roles/${idRol}/permisos`, body);
   }
 
   quitarPermisoRol(idRol: number, idPermiso: number) {

@@ -61,21 +61,23 @@
     </div>
     <section class="role-permissions" *ngIf="form.idRol">
       <div class="panel-title role-permissions__title">Permisos del rol</div>
-      <div class="helper-text">Selecciona uno o más permisos para asignarlos. Los claims de sesiones ya emitidas se
-        actualizarán al renovar o iniciar sesión nuevamente.</div>
-      <div class="role-permissions__grid">
+      <div class="helper-text">Selecciona los permisos que tendrá el rol y guarda los cambios. Para retirar el
+        último permiso asignado, usa el botón ×. Los claims de sesiones ya emitidas se actualizarán al renovar o
+        iniciar sesión nuevamente.</div>
+      <div *ngIf="cargandoDetalleRol" class="helper-text role-permissions__status">Cargando permisos del rol...</div>
+      <div *ngIf="!cargandoDetalleRol" class="role-permissions__grid">
         <label class="permission-option" *ngFor="let permiso of permisos">
           <input type="checkbox" [checked]="permisoSeleccionado(permiso.idPermiso)"
             (change)="togglePermiso(permiso.idPermiso, $any($event.target).checked)" />
           <span><strong>{{ permiso.nombre }}</strong><small>{{ permiso.codigo }}</small></span>
         </label>
       </div>
-      <button type="button" class="btn btn-secondary" [disabled]="guardandoPermisos || !idsPermisosSeleccionados.length"
-        (click)="asignarPermisos()">{{ guardandoPermisos ? 'Asignando...' : 'Asignar seleccionados' }}</button>
+      <button type="button" class="btn btn-secondary" [disabled]="guardandoPermisos || cargandoDetalleRol || !idsPermisosSeleccionados.size"
+        (click)="asignarPermisos()">{{ guardandoPermisos ? 'Guardando...' : 'Guardar permisos' }}</button>
 
       <div class="assigned-permissions" *ngIf="permisosAsignados.length">
-        <div class="helper-text">Asignados en esta vista:</div>
-        <button type="button" class="list-chip permission-chip" *ngFor="let permiso of permisosAsignados"
+        <span class="assigned-permissions__label">Asignados</span>
+        <button type="button" class="permission-chip" *ngFor="let permiso of permisosAsignados"
           (click)="quitarPermiso(permiso)" [title]="'Quitar ' + permiso.nombre">
           {{ permiso.nombre }} <span aria-hidden="true">×</span>
         </button>

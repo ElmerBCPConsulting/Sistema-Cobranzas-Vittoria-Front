@@ -5,6 +5,7 @@ import { SeguridadService } from '../../core/services/seguridad.service';
 import { NotificationService } from '../../core/services/notification.service';
 import { Permiso } from '../../models/permisos.models';
 import { extraerMensajeError } from '../../core/utils/api-error.util';
+import { forkJoin } from 'rxjs';
 
 @Component({
   standalone: true,
@@ -30,8 +31,9 @@ export class RolesPage implements OnInit {
   rows: any[] = [];
   permisos: Permiso[] = [];
   permisosAsignados: Permiso[] = [];
-  idsPermisosSeleccionados: number[] = [];
+  idsPermisosSeleccionados = new Set<number>();
   guardandoPermisos = false;
+  cargandoDetalleRol = false;
   filtroBusqueda = '';
 
   private normalizarBusqueda(valor: any): string {
@@ -64,17 +66,6 @@ export class RolesPage implements OnInit {
 
   ngOnInit() {
     this.load();
-    this.loadPermisos();
-  }
-
-  loadPermisos(): void {
-    this.seguridad.permisos(true).subscribe({
-      next: response => {
-        this.permisos = response.permisos ?? [];
-        this.cdr.detectChanges();
-      },
-      error: error => this.notifyService.show(extraerMensajeError(error, 'No se pudieron cargar los permisos.'), 'error')
-    });
   }
 
   load() {
@@ -86,29 +77,50 @@ export class RolesPage implements OnInit {
 
   edit(row: any) {
     this.modalOpen = true;
+    this.cargandoDetalleRol = true;
+    this.permisos = [];
+    this.idsPermisosSeleccionados = new Set<number>();
     this.form = {
       idRol: row.idRol ?? null,
       nombreRol: row.nombreRol ?? row.nombre ?? '',
       descripcion: row.descripcion ?? '',
       activo: row.activo ?? true
     };
-    // La lista de roles puede incluir permisos; si no los incluye, la UI parte vacía y
-    // conserva localmente las asignaciones realizadas durante esta edición.
-    const asignados = Array.isArray(row.permisos)
-      ? row.permisos
-      : Array.isArray(row.Permisos) ? row.Permisos : [];
-    const ids = asignados
-      .map((permiso: any) => Number(permiso?.idPermiso ?? permiso?.IdPermiso ?? permiso))
-      .filter((id: number) => id > 0);
-    this.permisosAsignados = this.permisos.filter(permiso => ids.includes(permiso.idPermiso));
-    this.idsPermisosSeleccionados = [...ids];
+    const idRol = Number(this.form.idRol);
+    if (!idRol) return;
+
+    forkJoin({
+      permisosDisponibles: this.seguridad.permisos(true),
+      rol: this.seguridad.obtenerRolConPermisos(idRol)
+    }).subscribe({
+      next: ({ permisosDisponibles, rol }) => {
+        this.form = {
+          idRol: rol.idRol,
+          nombreRol: rol.nombre,
+          descripcion: rol.descripcion,
+          activo: rol.activo
+        };
+        this.permisos = permisosDisponibles.permisos ?? [];
+        this.idsPermisosSeleccionados = new Set(rol.permisos.map(permiso => permiso.idPermiso));
+        this.permisosAsignados = this.permisos.filter(permiso => this.idsPermisosSeleccionados.has(permiso.idPermiso));
+        this.cargandoDetalleRol = false;
+        this.cdr.detectChanges();
+      },
+      error: error => {
+        this.cargandoDetalleRol = false;
+        this.notifyService.show(extraerMensajeError(error, 'No se pudo cargar el detalle del rol.'), 'error');
+        this.cdr.detectChanges();
+      }
+    });
   }
 
   reset() {
     this.form = { idRol: null, nombreRol: '', descripcion: '', activo: true };
     this.msg = '';
+    this.permisos = [];
     this.permisosAsignados = [];
-    this.idsPermisosSeleccionados = [];
+    this.idsPermisosSeleccionados = new Set<number>();
+    this.cargandoDetalleRol = false;
   }
 
   save() {
@@ -143,29 +155,26 @@ export class RolesPage implements OnInit {
   }
 
   permisoSeleccionado(idPermiso: number): boolean {
-    return this.idsPermisosSeleccionados.includes(idPermiso);
+    return this.idsPermisosSeleccionados.has(idPermiso);
   }
 
   togglePermiso(idPermiso: number, selected: boolean): void {
-    this.idsPermisosSeleccionados = selected
-      ? Array.from(new Set([...this.idsPermisosSeleccionados, idPermiso]))
-      : this.idsPermisosSeleccionados.filter(id => id !== idPermiso);
+    if (selected) this.idsPermisosSeleccionados.add(idPermiso);
+    else this.idsPermisosSeleccionados.delete(idPermiso);
   }
 
   asignarPermisos(): void {
     const idRol = Number(this.form.idRol);
-    if (!idRol || !this.idsPermisosSeleccionados.length || this.guardandoPermisos) {
-      this.notifyService.show('Selecciona al menos un permiso.', 'info');
+    if (!idRol || !this.idsPermisosSeleccionados.size || this.guardandoPermisos) {
+      this.notifyService.show('Para quitar todos los permisos, usa el botón × de cada permiso asignado.', 'info');
       return;
     }
 
     this.guardandoPermisos = true;
-    this.seguridad.asignarPermisosRol(idRol, this.idsPermisosSeleccionados).subscribe({
+    this.seguridad.asignarPermisosRol(idRol, [...this.idsPermisosSeleccionados]).subscribe({
       next: () => {
         this.guardandoPermisos = false;
-        this.permisosAsignados = this.permisos.filter(permiso =>
-          this.idsPermisosSeleccionados.includes(permiso.idPermiso)
-        );
+        this.permisosAsignados = this.permisos.filter(permiso => this.idsPermisosSeleccionados.has(permiso.idPermiso));
         this.notifyService.show('Permisos asignados. Vuelve a iniciar sesión para actualizar los claims.', 'success', 5000);
         this.cdr.detectChanges();
       },
@@ -184,11 +193,12 @@ export class RolesPage implements OnInit {
     this.seguridad.quitarPermisoRol(idRol, permiso.idPermiso).subscribe({
       next: () => {
         this.permisosAsignados = this.permisosAsignados.filter(item => item.idPermiso !== permiso.idPermiso);
-        this.idsPermisosSeleccionados = this.idsPermisosSeleccionados.filter(id => id !== permiso.idPermiso);
+        this.idsPermisosSeleccionados.delete(permiso.idPermiso);
         this.notifyService.show('Permiso retirado. Vuelve a iniciar sesión para actualizar los claims.', 'success', 5000);
         this.cdr.detectChanges();
       },
       error: error => this.notifyService.show(extraerMensajeError(error, 'No se pudo retirar el permiso.'), 'error')
     });
   }
+
 }
