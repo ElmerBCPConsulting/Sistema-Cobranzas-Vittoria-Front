@@ -97,7 +97,7 @@
           disponibles</span>
       </div>
       <div class="detail-actions">
-        <button class="btn btn-primary" *ngIf="puedeEditarDetalle" (click)="editarDesdeDetalle()">Editar</button>
+        <button class="btn btn-primary" *ngIf="puedeEditarDetalle" (click)="editarDesdeDetalle()">{{ puedeEditarCantidadesAlmacen ? 'Editar cantidades' : 'Editar' }}</button>
         <button class="btn btn-secondary" (click)="descargarPdfRequerimiento()">Descargar PDF</button>
         <button class="btn btn-success" *ngIf="puedeEnviar" (click)="abrirAccion('enviar')">Enviar a almacén</button>
         <button class="btn btn-success" *ngIf="puedeProcesarStock" (click)="abrirAccion('validar-almacen')">Procesar
@@ -186,7 +186,8 @@
   (click)="$event.stopPropagation()">
   <button type="button" class="modal-close" (click)="cerrarFormModal()" aria-label="Cerrar">×</button>
   <div class="panel-title">{{ editando ? 'Editar requerimiento' : 'Nuevo requerimiento' }}</div>
-  <div class="helper-text">Número se genera automáticamente. El solicitante se toma de la sesión actual.</div>
+  <div class="helper-text" *ngIf="!edicionSoloCantidadesAlmacen">Número se genera automáticamente. El solicitante se toma de la sesión actual.</div>
+  <div class="helper-text" *ngIf="edicionSoloCantidadesAlmacen">Puedes ajustar únicamente las cantidades solicitadas.</div>
 
   <div class="form-grid two requer-form-grid">
     <div class="field auto-field">
@@ -195,26 +196,26 @@
     </div>
     <div class="field auto-field">
       <label>Fecha</label>
-      <input type="date" [(ngModel)]="form.fechaRequerimiento" />
+      <input type="date" [(ngModel)]="form.fechaRequerimiento" [disabled]="edicionSoloCantidadesAlmacen" />
     </div>
     <div class="field">
       <label>Proyecto</label>
-      <select [(ngModel)]="form.idProyecto">
+      <select [(ngModel)]="form.idProyecto" [disabled]="edicionSoloCantidadesAlmacen">
         <option [ngValue]="null">Seleccionar</option>
         <option *ngFor="let p of proyectos" [ngValue]="p.idProyecto">{{ p.nombreProyecto }}</option>
       </select>
     </div>
     <div class="field compact-field">
       <label>Fecha entrega</label>
-      <input type="date" [(ngModel)]="form.fechaEntrega" />
+      <input type="date" [(ngModel)]="form.fechaEntrega" [disabled]="edicionSoloCantidadesAlmacen" />
     </div>
     <div class="field full-row">
       <label>Descripción</label>
-      <input [(ngModel)]="form.descripcion" placeholder="Descripción del requerimiento" />
+      <input [(ngModel)]="form.descripcion" placeholder="Descripción del requerimiento" [disabled]="edicionSoloCantidadesAlmacen" />
     </div>
     <div class="field full-row">
       <label>Observación</label>
-      <textarea rows="3" [(ngModel)]="form.observacion" placeholder="Observación general"></textarea>
+      <textarea rows="3" [(ngModel)]="form.observacion" placeholder="Observación general" [disabled]="edicionSoloCantidadesAlmacen"></textarea>
     </div>
   </div>
 
@@ -222,9 +223,9 @@
     <div class="detail-card__head">
       <div>
         <div class="panel-title detail-card__title">Detalle</div>
-        <div class="helper-text detail-card__text">Agrega ítems por especialidad y ajusta cantidades.</div>
+        <div class="helper-text detail-card__text">{{ edicionSoloCantidadesAlmacen ? 'Ajusta las cantidades solicitadas.' : 'Agrega ítems por especialidad y ajusta cantidades.' }}</div>
       </div>
-      <button class="btn btn-secondary" type="button" (click)="abrirModalEspecialidades()">+ Agregar ítem</button>
+      <button class="btn btn-secondary" type="button" (click)="abrirModalEspecialidades()" *ngIf="!edicionSoloCantidadesAlmacen">+ Agregar ítem</button>
     </div>
 
     <div *ngIf="form.items.length" class="resumen-especialidades">
@@ -251,15 +252,19 @@
             <td>{{ x.especialidad || '-' }}</td>
             <td>{{ x.material }}</td>
             <td>{{ x.unidadMedida || x.unidad || '-' }}</td>
-            <td>{{ x.cantidad }}</td>
+            <td>
+              <input *ngIf="edicionSoloCantidadesAlmacen" type="number" min="0.01" step="0.01" [(ngModel)]="x.cantidad" />
+              <ng-container *ngIf="!edicionSoloCantidadesAlmacen">{{ x.cantidad }}</ng-container>
+            </td>
             <td>{{ x.observacion || '-' }}</td>
-            <td class="actions-col--select">
+            <td class="actions-col--select" *ngIf="!edicionSoloCantidadesAlmacen">
               <select class="actions-select" (change)="onAccionItem($event, i)">
                 <option value="">Acciones</option>
                 <option value="edit">Editar</option>
                 <option value="remove">Quitar</option>
               </select>
             </td>
+            <td class="actions-col--select" *ngIf="edicionSoloCantidadesAlmacen">-</td>
           </tr>
         </tbody>
       </table>
@@ -273,7 +278,7 @@
   <div class="toolbar form-actions">
     <button class="btn btn-primary" (click)="save()" [disabled]="saving">{{ saving ? 'Guardando...' : (editando ?
       'Actualizar requerimiento' : 'Guardar requerimiento') }}</button>
-    <button class="btn btn-ghost" (click)="reset()">Limpiar</button>
+    <button class="btn btn-ghost" (click)="reset()">{{ edicionSoloCantidadesAlmacen ? 'Cancelar' : 'Limpiar' }}</button>
   </div>
 
   <div *ngIf="msg" class="success-box">{{ msg }}</div>

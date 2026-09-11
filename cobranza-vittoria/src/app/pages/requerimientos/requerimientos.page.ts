@@ -8,6 +8,7 @@ import { RequerimientosService } from '../../core/services/requerimientos.servic
 import { extraerMensajeError } from '../../core/utils/api-error.util';
 import {
   RequerimientoFilters,
+  RequerimientoCantidadAlmacenRequest,
   RequerimientoGetResponse,
   RequerimientoRequest,
   RequerimientoResumen,
@@ -41,6 +42,7 @@ export class RequerimientosPage implements OnInit {
   };
 
   editando = false;
+  edicionSoloCantidadesAlmacen = false;
   puedeEditarDetalle = false;
   requerimientoEditandoId: number | null = null;
 
@@ -116,6 +118,11 @@ export class RequerimientosPage implements OnInit {
 
   get puedeProcesarStock(): boolean {
     return this.estadoDetalle === 'EnviadoAlmacen' && this.auth.hasPermission('requerimientos.procesar_stock');
+  }
+
+  get puedeEditarCantidadesAlmacen(): boolean {
+    return this.estadoDetalle === 'EnviadoAlmacen'
+      && this.auth.hasPermission('requerimientos.editar_cantidades_almacen');
   }
 
   get puedeAprobar(): boolean {
@@ -407,9 +414,10 @@ export class RequerimientosPage implements OnInit {
     this.requerimientos.obtener(row.idRequerimiento).subscribe({
       next: (x) => {
         this.detalle = x;
-        this.puedeEditarDetalle = !!x?.puedeEditar
+        this.puedeEditarDetalle = (!!x?.puedeEditar
           && x.requerimiento.estado === 'Registrado'
-          && this.auth.hasPermission('requerimientos.editar_borrador');
+          && this.auth.hasPermission('requerimientos.editar_borrador'))
+          || this.puedeEditarCantidadesAlmacen;
         this.detalleModalOpen = true;
         this.formModalOpen = false;
         this.cdr.detectChanges();
@@ -434,6 +442,7 @@ export class RequerimientosPage implements OnInit {
     const items = this.detalle.items || [];
 
     this.editando = true;
+    this.edicionSoloCantidadesAlmacen = req.estado === 'EnviadoAlmacen';
     this.requerimientoEditandoId = req.idRequerimiento;
 
     this.form = {
@@ -444,6 +453,7 @@ export class RequerimientosPage implements OnInit {
       fechaEntrega: this.toDateInput(req.fechaEntrega),
       observacion: req.observacion ?? '',
       items: items.map((x: any) => ({
+        idRequerimientoDetalle: x.idRequerimientoDetalle,
         idMaterial: x.idMaterial,
         idEspecialidad: x.idEspecialidad ?? null,
         especialidad: x.especialidad ?? '',
@@ -603,7 +613,10 @@ export class RequerimientosPage implements OnInit {
     this.msg = '';
 
     if ((!this.editando && !this.puedeCrear)
-      || (this.editando && !this.auth.hasPermission('requerimientos.editar_borrador'))) {
+      || (this.editando && !this.edicionSoloCantidadesAlmacen
+        && !this.auth.hasPermission('requerimientos.editar_borrador'))
+      || (this.editando && this.edicionSoloCantidadesAlmacen
+        && !this.auth.hasPermission('requerimientos.editar_cantidades_almacen'))) {
       this.msg = 'No tienes permiso para guardar este requerimiento.';
       return;
     }
@@ -624,6 +637,12 @@ export class RequerimientosPage implements OnInit {
     }
     if (!this.form.items.length) {
       this.msg = 'Debes agregar al menos un ítem.';
+      return;
+    }
+
+    if (this.edicionSoloCantidadesAlmacen && this.form.items.some((x: any) =>
+      !Number.isFinite(Number(x.cantidad)) || Number(x.cantidad) <= 0 || !Number(x.idRequerimientoDetalle))) {
+      this.msg = 'Cada ítem debe conservar su detalle y tener una cantidad mayor a cero.';
       return;
     }
 
@@ -650,8 +669,17 @@ export class RequerimientosPage implements OnInit {
 
     this.saving = true;
 
+    const cantidadesAlmacen: RequerimientoCantidadAlmacenRequest = {
+      items: this.form.items.map((x: any) => ({
+        idRequerimientoDetalle: Number(x.idRequerimientoDetalle),
+        cantidad: Number(x.cantidad)
+      }))
+    };
+
     const request: Observable<unknown> = this.editando && this.requerimientoEditandoId
-      ? this.requerimientos.actualizar(this.requerimientoEditandoId, dto)
+      ? this.edicionSoloCantidadesAlmacen
+        ? this.requerimientos.actualizarCantidadesAlmacen(this.requerimientoEditandoId, cantidadesAlmacen)
+        : this.requerimientos.actualizar(this.requerimientoEditandoId, dto)
       : this.requerimientos.crear(dto);
 
     request.subscribe({
@@ -684,6 +712,7 @@ export class RequerimientosPage implements OnInit {
 
   reset(): void {
     this.editando = false;
+    this.edicionSoloCantidadesAlmacen = false;
     this.requerimientoEditandoId = null;
     this.puedeEditarDetalle = false;
     this.modalEspecialidades = false;
