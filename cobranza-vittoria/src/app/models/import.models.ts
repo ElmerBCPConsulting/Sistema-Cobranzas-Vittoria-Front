@@ -5,7 +5,9 @@ export type ImportModulo =
   | 'proveedor'
   | 'proveedor-gasto'
   | 'proveedor-terreno'
-  | 'categoria-gasto';
+  | 'categoria-gasto'
+  | 'partida'
+  | 'centro-costo';
 
 export interface ImportModuloMeta {
   modulo: ImportModulo;
@@ -13,6 +15,13 @@ export interface ImportModuloMeta {
   tablaDestino: string;
   columnasRequeridas: string[];
   columnasOpcionales: string[];
+  /**
+   * Endpoints propios (relativos a la base de la API). Si se omiten se usa el
+   * genérico /api/import/{modulo}. Los módulos con permisos propios, como el
+   * catálogo de partidas, importan por su controlador autenticado.
+   */
+  urlImportar?: string;
+  urlPlantilla?: string;
 }
 
 export interface ImportExito {
@@ -94,7 +103,7 @@ export const IMPORT_MODULOS_META: Record<ImportModulo, ImportModuloMeta> = {
     titulo: 'Materiales',
     tablaDestino: 'maestra.Material',
     columnasRequeridas: ['Especialidad', 'Nombre', 'UnidadMedida', 'Codigo'],
-    columnasOpcionales: []
+    columnasOpcionales: ['Partida']
   },
   'proveedor': {
     modulo: 'proveedor',
@@ -134,6 +143,24 @@ export const IMPORT_MODULOS_META: Record<ImportModulo, ImportModuloMeta> = {
     tablaDestino: 'maestra.CategoriaGasto',
     columnasRequeridas: ['Nombre'],
     columnasOpcionales: ['Activo']
+  },
+  'partida': {
+    modulo: 'partida',
+    titulo: 'Catálogo de partidas',
+    tablaDestino: 'ControlPresupuestario.CatalogoPartida',
+    columnasRequeridas: ['Codigo', 'Nombre', 'Tipo'],
+    columnasOpcionales: ['CodigoPadre', 'Seccion', 'Descripcion'],
+    urlImportar: '/api/control-presupuestario/partidas/importar',
+    urlPlantilla: '/api/control-presupuestario/partidas/plantilla'
+  },
+  'centro-costo': {
+    modulo: 'centro-costo',
+    titulo: 'Centros de costo',
+    tablaDestino: 'ControlPresupuestario.CentroCosto',
+    columnasRequeridas: ['Codigo', 'Nombre', 'Tipo'],
+    columnasOpcionales: ['Proyecto', 'Descripcion'],
+    urlImportar: '/api/control-presupuestario/centros-costo/importar',
+    urlPlantilla: '/api/control-presupuestario/centros-costo/plantilla'
   }
 };
 
