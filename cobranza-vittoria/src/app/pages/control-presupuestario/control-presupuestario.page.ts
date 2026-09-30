@@ -1,16 +1,17 @@
 import { ChangeDetectorRef, Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { ControlPresupuestarioService, ReporteFiltro } from '../../core/services/control-presupuestario.service';
+import { ControlPresupuestarioService, NodoArbol, ReporteFiltro } from '../../core/services/control-presupuestario.service';
 import { NotificationService } from '../../core/services/notification.service';
 import { TableroPresupuestarioComponent } from './tablero/tablero-presupuestario.component';
+import { ArbolPresupuestarioComponent } from './arbol/arbol-presupuestario.component';
 
 type Vista = 'saldos' | 'comprometido' | 'ejecutado' | 'gastos-partida' | 'gastos-centro';
 
 @Component({
   standalone: true,
   selector: 'app-control-presupuestario-page',
-  imports: [CommonModule, FormsModule, TableroPresupuestarioComponent],
+  imports: [CommonModule, FormsModule, TableroPresupuestarioComponent, ArbolPresupuestarioComponent],
   templateUrl: './control-presupuestario.page.html',
   styleUrl: './control-presupuestario.page.css'
 })
@@ -36,6 +37,10 @@ export class ControlPresupuestarioPage implements OnInit {
   filtroPresupuesto = '';
   soloExcedidos = false;
   filtroBusqueda = '';
+  /** Nivel de anidamiento del dashboard; '' = partidas finales. */
+  filtroNivel = '';
+  /** Nivel más profundo del centro de costo / presupuesto elegido, informado por el dashboard. */
+  nivelMaximoTablero = 0;
 
   constructor(
     private cp: ControlPresupuestarioService,
@@ -57,6 +62,21 @@ export class ControlPresupuestarioPage implements OnInit {
 
   get idPresupuestoDashboard(): number | null {
     return this.filtroPresupuesto === '' ? null : Number(this.filtroPresupuesto);
+  }
+
+  get nivelDashboard(): number | null {
+    return this.filtroNivel === '' ? null : Number(this.filtroNivel);
+  }
+
+  get nivelesDisponibles(): number[] {
+    return Array.from({ length: this.nivelMaximoTablero }, (_, i) => i + 1);
+  }
+
+  /** Al cambiar de centro o presupuesto, un nivel que ya no existe vuelve a "Partidas finales". */
+  onNivelMaximo(maximo: number): void {
+    this.nivelMaximoTablero = maximo;
+    if (this.nivelDashboard !== null && this.nivelDashboard > maximo) this.filtroNivel = '';
+    this.cdr.detectChanges();
   }
 
   get filtro(): ReporteFiltro {
@@ -217,6 +237,23 @@ export class ControlPresupuestarioPage implements OnInit {
         this.notifications.show(err?.error?.message || 'No se pudo cargar el historial.', 'error');
         this.cdr.detectChanges();
       }
+    });
+  }
+
+  /** Hoja del árbol: solo tiene detalle propio si pertenece a un único presupuesto. */
+  verMovimientosNodo(nodo: NodoArbol): void {
+    if (!nodo.idPresupuestoDetalle || !nodo.idPresupuesto || !nodo.idPresupuestoVersion) {
+      this.notifications.show(
+        'Esta partida suma montos de varios presupuestos. Elige un presupuesto en el filtro para ver sus movimientos.',
+        'info');
+      return;
+    }
+    this.verMovimientos({
+      idPresupuesto: nodo.idPresupuesto,
+      idPresupuestoVersion: nodo.idPresupuestoVersion,
+      idPresupuestoDetalle: nodo.idPresupuestoDetalle,
+      codigoPartida: nodo.codigo,
+      partida: nodo.nombre
     });
   }
 

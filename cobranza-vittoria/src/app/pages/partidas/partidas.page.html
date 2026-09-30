@@ -16,7 +16,7 @@
         </div>
       </div>
       <div class="title-actions">
-        <button type="button" class="btn btn-secondary btn-sm" (click)="abrirImportModal()">Importar CSV</button>
+        <button type="button" class="btn btn-secondary btn-sm" (click)="abrirImportModal()">Importar CSV/XLSX</button>
         <button type="button" class="btn btn-primary btn-sm" (click)="abrirModalNuevo()">+ Nueva partida</button>
       </div>
     </div>
@@ -185,6 +185,11 @@
         Columnas: <code>Codigo</code>, <code>Nombre</code> y <code>Tipo</code> (obligatorias);
         <code>CodigoPadre</code>, <code>Seccion</code> y <code>Descripcion</code> (opcionales).
         Las partidas hijas pueden ir antes que su padre. Si una fila tiene un error, no se importa ninguna.
+      </p>
+      <p>
+        ¿Tienes el presupuesto con niveles (<code>Nivel 1</code>… <code>Nivel N</code>) y montos? Súbelo en
+        <strong>Presupuestos → versión en borrador → Importar estructura (Excel)</strong>: crea las partidas que
+        falten y carga los montos en un solo paso.
       </p>
       <p>
         <strong>Tipo</strong> (código o nombre):

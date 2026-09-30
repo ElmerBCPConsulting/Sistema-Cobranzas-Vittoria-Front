@@ -6,7 +6,7 @@
     <!-- 1. Distribución del gasto por rubro -->
     <section class="panel tablero-card">
       <header class="tablero-card__header">
-        <h2 class="tablero-card__titulo">Distribución del gasto por rubro</h2>
+        <h2 class="tablero-card__titulo">Distribución del gasto por {{ etiquetaAgrupacion }}</h2>
         <p class="tablero-card__sub">
           {{ datos.encabezado.nombreProyecto ? 'Proyecto: ' + datos.encabezado.nombreProyecto
             : datos.encabezado.codigoCentroCosto + ' — ' + datos.encabezado.nombreCentroCosto }}
@@ -14,7 +14,20 @@
         </p>
       </header>
 
-      <div *ngIf="!segmentos.length" class="empty-state">Aún no hay gasto ejecutado en este centro de costo.</div>
+      <nav class="tablero-ruta" aria-label="Rama del tablero" *ngIf="rama.length">
+        <button type="button" class="tablero-ruta__item" (click)="irARama(null)">Todo</button>
+        <ng-container *ngFor="let n of rama; let ultimo = last">
+          <span class="tablero-ruta__sep" aria-hidden="true">›</span>
+          <button type="button" class="tablero-ruta__item" [class.tablero-ruta__item--actual]="ultimo"
+            [attr.aria-current]="ultimo ? 'location' : null" (click)="irARama(n.idCatalogoPartida)">
+            {{ n.codigo }} {{ n.nombre }}</button>
+        </ng-container>
+      </nav>
+      <p class="tablero-ayuda" *ngIf="hayNavegables">
+        Haz clic en una categoría para ver cómo se reparte su gasto.
+      </p>
+
+      <div *ngIf="!segmentos.length" class="empty-state">Aún no hay gasto ejecutado en {{ rama.length ? 'esta rama' : 'este centro de costo' }}.</div>
 
       <div *ngIf="segmentos.length" class="distribucion">
         <div class="dona">
@@ -22,8 +35,10 @@
             [attr.aria-label]="'Distribución del gasto total de ' + simbolo + ' ' + (datos.resumen.ejecutado | number:'1.0-0') + ' por rubro'">
             <path *ngFor="let s of segmentos" class="dona__segmento" [attr.d]="s.path" [attr.fill]="s.color"
               [class.dona__segmento--activo]="segmentoActivo === s"
+              [class.dona__segmento--navegable]="puedeBajar(s.rubro)"
               (pointerenter)="segmentoActivo = s" (pointerleave)="segmentoActivo = null"
               (focus)="segmentoActivo = s" (blur)="segmentoActivo = null" tabindex="0"
+              (click)="bajarA(s.rubro)" (keydown.enter)="bajarA(s.rubro)"
               [attr.aria-label]="s.nombre + ': ' + simbolo + ' ' + (s.monto | number:'1.0-0') + ', ' + (s.porcentaje | number:'1.0-0') + '%'">
             </path>
           </svg>
@@ -44,16 +59,19 @@
           <table>
             <thead>
               <tr>
-                <th>Rubro</th>
+                <th>{{ datos.encabezado.nivel ? 'Categoría' : 'Partida' }}</th>
                 <th class="num">Gasto ({{ simbolo }})</th>
                 <th class="num">% del total</th>
               </tr>
             </thead>
             <tbody>
-              <tr *ngFor="let r of rubrosConGasto; let i = index">
+              <tr *ngFor="let r of rubrosConGasto; let i = index" [class.fila-navegable]="puedeBajar(r)"
+                (click)="bajarA(r)">
                 <td>
                   <span class="swatch" [style.background]="colorRubro(i)" aria-hidden="true"></span>
-                  {{ r.nombre }}
+                  <button *ngIf="puedeBajar(r)" type="button" class="rubro-enlace"
+                    (click)="$event.stopPropagation(); bajarA(r)">{{ nombreRubro(r) }}</button>
+                  <ng-container *ngIf="!puedeBajar(r)">{{ nombreRubro(r) }}</ng-container>
                   <small *ngIf="i >= 5" class="otros-tag">(en "Otros")</small>
                 </td>
                 <td class="num">{{ r.ejecutado | number:'1.0-0' }}</td>
@@ -97,8 +115,8 @@
       </header>
 
       <div *ngIf="!datos.encabezado.tieneCronograma" class="tablero-aviso">
-        El presupuesto no tiene fecha de inicio y fin: se muestra solo el gasto real. Complétalas en
-        Presupuestos para ver la curva presupuestada y la desviación a la fecha.
+        Registra las fechas de inicio y fin del presupuesto para ver la curva planificada y la desviación a la
+        fecha. Mientras tanto, la línea punteada marca el presupuesto total como referencia.
       </div>
 
       <div class="evolucion">
@@ -107,6 +125,9 @@
             <span class="leyenda__item"><span class="linea-key linea-key--real"></span>Gasto real acumulado</span>
             <span class="leyenda__item" *ngIf="datos.encabezado.tieneCronograma">
               <span class="linea-key linea-key--plan"></span>Presupuesto acumulado
+            </span>
+            <span class="leyenda__item" *ngIf="referenciaTotal">
+              <span class="linea-key linea-key--plan"></span>Presupuesto total
             </span>
             <span class="leyenda__item" *ngIf="hayExceso">
               <span class="area-key"></span>Real por encima del presupuesto
@@ -139,6 +160,12 @@
               <polygon *ngIf="hayExceso" class="area-desviacion" [attr.points]="areaEntreCurvas"
                 clip-path="url(#sobre-plan)"></polygon>
               <path *ngIf="rutaPlan" class="linea-plan" [attr.d]="rutaPlan"></path>
+              <g *ngIf="referenciaTotal">
+                <line class="linea-plan" [attr.x1]="margen.izquierda" [attr.x2]="ancho - margen.derecha"
+                  [attr.y1]="referenciaTotal.y" [attr.y2]="referenciaTotal.y"></line>
+                <text class="referencia-texto" [attr.x]="ancho - margen.derecha - 4" [attr.y]="referenciaTotal.y - 6"
+                  text-anchor="end">Presupuesto total · {{ simbolo }} {{ formatoCompacto(referenciaTotal.valor) }}</text>
+              </g>
               <path *ngIf="rutaReal" class="linea-real" [attr.d]="rutaReal"></path>
               <circle *ngIf="puntoFinReal" class="punto-fin" [attr.cx]="puntoFinReal.x" [attr.cy]="puntoFinReal.y" r="5"></circle>
               <!-- Crosshair -->
@@ -218,14 +245,14 @@
             <table class="tabla-desviacion">
               <thead>
                 <tr>
-                  <th>Rubro</th>
+                  <th>{{ datos.encabezado.nivel ? 'Categoría' : 'Partida' }}</th>
                   <th class="num">Desviación</th>
                   <th class="num">%</th>
                 </tr>
               </thead>
               <tbody>
                 <tr *ngFor="let r of topDesviaciones">
-                  <td [title]="r.codigo">{{ r.nombre }}</td>
+                  <td [title]="r.codigo">{{ nombreRubro(r) }}</td>
                   <td class="num" [class.txt-malo]="r.desviacion > 0">{{ r.desviacion > 0 ? '+' : '' }}{{ r.desviacion | number:'1.0-0' }}</td>
                   <td class="num" [class.txt-malo]="r.desviacion > 0">
                     {{ r.desviacionPorcentaje === null ? '—' : ((r.desviacionPorcentaje > 0 ? '+' : '') + (r.desviacionPorcentaje | number:'1.1-1') + '%') }}

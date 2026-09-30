@@ -115,8 +115,9 @@
             <select class="actions-select" (change)="onAccion($event, row)" aria-label="Acciones del gasto">
               <option value="">Acciones</option>
               <option *ngIf="puedeOperar" value="edit" [disabled]="row.estado !== 'REGISTRADO'">Editar</option>
-              <option *ngIf="puedeOperar" value="confirmar" [disabled]="row.estado !== 'REGISTRADO'">Confirmar</option>
-              <option *ngIf="puedeOperar" value="anular" [disabled]="row.estado !== 'CONFIRMADO'">Anular</option>
+              <option *ngIf="puedeOperar && !esHistorico(row)" value="confirmar"
+                [disabled]="row.estado !== 'REGISTRADO'">Confirmar</option>
+              <option *ngIf="puedeOperar" value="anular" [disabled]="row.estado === 'ANULADO'">Anular</option>
               <option value="documentos">Documentos</option>
             </select>
           </td>
@@ -284,7 +285,10 @@
     El monto pasará a ejecutado y se descontará del saldo de la partida {{ modalConfirmacion.row.codigoPartida }}.
   </p>
   <p class="modal-nota" *ngIf="modalConfirmacion.accion === 'anular'">
-    Se registrará un ajuste que devuelve el monto a la partida. El gasto anulado no se puede reactivar.
+    {{ modalConfirmacion.row.estado === 'CONFIRMADO'
+      ? 'Se registrará un ajuste que devuelve el monto a la partida.'
+      : 'El gasto no se confirmó, así que no afecta el saldo de la partida.' }}
+    El gasto anulado no se puede reactivar.
   </p>
   <div class="toolbar toolbar--compact">
     <button class="btn" [class.btn-primary]="modalConfirmacion.accion === 'confirmar'"

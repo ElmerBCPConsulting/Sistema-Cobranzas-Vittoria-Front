@@ -1,4 +1,4 @@
-import { ChangeDetectorRef, Component, Input, OnChanges } from '@angular/core';
+import { ChangeDetectorRef, Component, EventEmitter, Input, OnChanges, Output } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ControlPresupuestarioService } from '../../../core/services/control-presupuestario.service';
 
@@ -9,6 +9,8 @@ interface Segmento {
   porcentaje: number;
   color: string;
   path: string;
+  /** Rubro de origen; null en "Otros". */
+  rubro: any | null;
 }
 
 interface Punto { x: number; y: number; }
@@ -36,6 +38,10 @@ interface Punto { x: number; y: number; }
 export class TableroPresupuestarioComponent implements OnChanges {
   @Input({ required: true }) idCentroCosto!: number;
   @Input() idPresupuesto: number | null = null;
+  /** Nivel de anidamiento de los rubros (1 = categorías principales); null = partidas finales. */
+  @Input() nivel: number | null = null;
+  /** Nivel más profundo de las partidas del tablero, para el rango del selector del panel. */
+  @Output() nivelMaximo = new EventEmitter<number>();
 
   /** Orden fijo de la paleta categórica; "Otros" siempre en gris neutro. */
   static readonly COLORES = ['#2a78d6', '#eb6834', '#1baf7a', '#eda100', '#e87ba4'];
@@ -44,6 +50,9 @@ export class TableroPresupuestarioComponent implements OnChanges {
 
   datos: any = null;
   cargando = false;
+  /** Rama elegida con clic en la dona; null = todo el centro de costo. */
+  idPartidaPadre: number | null = null;
+  private categorias: Set<number> | null = null;
   error = '';
 
   segmentos: Segmento[] = [];
@@ -61,6 +70,8 @@ export class TableroPresupuestarioComponent implements OnChanges {
   ticksY: { valor: number; y: number }[] = [];
   ticksX: { semana: number; x: number }[] = [];
   puntoFinReal: Punto | null = null;
+  /** Línea horizontal del presupuesto total cuando no hay cronograma (sin curva planificada). */
+  referenciaTotal: { valor: number; y: number } | null = null;
   /** Hay al menos una semana con el gasto real por encima del presupuesto acumulado. */
   hayExceso = false;
   hover: { x: number; punto: any; izquierda: boolean } | null = null;
@@ -72,16 +83,23 @@ export class TableroPresupuestarioComponent implements OnChanges {
 
   ngOnChanges(): void {
     if (!this.idCentroCosto) return;
+    // Otro centro, presupuesto o nivel: se vuelve a la vista completa.
+    this.idPartidaPadre = null;
     this.cargar();
+    this.cargarCategorias();
   }
 
   cargar(): void {
     this.cargando = true;
     this.error = '';
-    this.cp.dashboard(this.idCentroCosto, this.idPresupuesto).subscribe({
+    // Dentro de una rama se agrupa por sus hijas directas: el nivel del filtro no aplica.
+    const nivel = this.idPartidaPadre ? null : this.nivel;
+    this.cp.dashboard(this.idCentroCosto, this.idPresupuesto, nivel, this.idPartidaPadre).subscribe({
       next: datos => {
         this.datos = datos;
         this.cargando = false;
+        const maximo = Number(datos?.encabezado?.nivelMaximo);
+        if (maximo > 0) this.nivelMaximo.emit(maximo);
         this.construirDona();
         this.construirLineas();
         this.cdr.detectChanges();
@@ -95,6 +113,53 @@ export class TableroPresupuestarioComponent implements OnChanges {
     });
   }
 
+  // ------------------------------------------------------------ drill-down
+
+  /** Categorías (partidas con hijas) del catálogo: solo en ellas se puede bajar un nivel. */
+  private cargarCategorias(): void {
+    if (this.categorias) return;
+    this.cp.partidas({ esHoja: false }).subscribe({
+      next: rows => {
+        this.categorias = new Set((rows ?? []).map((p: any) => Number(p.idCatalogoPartida)));
+        this.cdr.detectChanges();
+      },
+      error: () => { this.categorias = new Set(); }
+    });
+  }
+
+  puedeBajar(rubro: any): boolean {
+    const id = Number(rubro?.idCatalogoPartida);
+    return !!id && !!this.categorias?.has(id);
+  }
+
+  /** Clic en un segmento o fila: el tablero entero se limita a esa rama. */
+  bajarA(rubro: any): void {
+    if (!this.puedeBajar(rubro) || this.cargando) return;
+    this.idPartidaPadre = Number(rubro.idCatalogoPartida);
+    this.cargar();
+  }
+
+  /** Breadcrumb: null vuelve a todo el centro de costo. */
+  irARama(idCatalogoPartida: number | null): void {
+    if (this.cargando || idCatalogoPartida === this.idPartidaPadre) return;
+    this.idPartidaPadre = idCatalogoPartida;
+    this.cargar();
+  }
+
+  get hayNavegables(): boolean {
+    return this.rubrosConGasto.some(r => this.puedeBajar(r));
+  }
+
+  get rama(): any[] {
+    return this.datos?.encabezado?.rama ?? [];
+  }
+
+  /** "Nivel N" con el nivel aplicado por el backend; "partida" sin agrupar. */
+  get etiquetaAgrupacion(): string {
+    const nivel = this.datos?.encabezado?.nivel;
+    return nivel ? `Nivel ${nivel}` : 'partida';
+  }
+
   get simbolo(): string {
     return this.datos?.encabezado?.simboloMoneda || this.datos?.encabezado?.codigoMoneda || '';
   }
@@ -102,6 +167,11 @@ export class TableroPresupuestarioComponent implements OnChanges {
   /** Rubros con gasto, en el orden de la dona; los que van en "Otros" llevan su color gris. */
   get rubrosConGasto(): any[] {
     return (this.datos?.rubros ?? []).filter((r: any) => Number(r.ejecutado) !== 0);
+  }
+
+  /** Código y nombre de la categoría o partida, si el backend manda el código. */
+  nombreRubro(rubro: any): string {
+    return rubro?.codigo ? `${rubro.codigo} ${rubro.nombre}` : rubro?.nombre ?? '';
   }
 
   colorRubro(indice: number): string {
@@ -125,11 +195,11 @@ export class TableroPresupuestarioComponent implements OnChanges {
       return;
     }
     const max = TableroPresupuestarioComponent.MAX_SEGMENTOS;
-    const base = rubros.slice(0, max).map((r, i) => ({
-      nombre: r.nombre, monto: Number(r.ejecutado), color: TableroPresupuestarioComponent.COLORES[i]
+    const base: Omit<Segmento, 'porcentaje' | 'path'>[] = rubros.slice(0, max).map((r, i) => ({
+      nombre: this.nombreRubro(r), monto: Number(r.ejecutado), color: TableroPresupuestarioComponent.COLORES[i], rubro: r
     }));
     const resto = rubros.slice(max).reduce((acc, r) => acc + Number(r.ejecutado), 0);
-    if (resto !== 0) base.push({ nombre: 'Otros', monto: resto, color: TableroPresupuestarioComponent.COLOR_OTROS });
+    if (resto !== 0) base.push({ nombre: 'Otros', monto: resto, color: TableroPresupuestarioComponent.COLOR_OTROS, rubro: null });
 
     let angulo = -Math.PI / 2;
     this.segmentos = base.map(s => {
@@ -159,6 +229,7 @@ export class TableroPresupuestarioComponent implements OnChanges {
     this.hover = null;
     if (!semanas.length) {
       this.rutaReal = this.rutaPlan = this.areaEntreCurvas = this.areaSobrePlan = '';
+      this.referenciaTotal = null;
       this.ticksX = this.ticksY = [];
       this.puntoFinReal = null;
       return;
@@ -167,11 +238,16 @@ export class TableroPresupuestarioComponent implements OnChanges {
     const ancho = this.ancho - izquierda - derecha;
     const alto = this.alto - arriba - abajo;
     const maxSemana = Math.max(1, ...semanas.map(s => Number(s.semana)));
+    // Sin cronograma no hay curva planificada: el presupuesto total se dibuja como referencia horizontal.
+    const totalPresupuesto = Number(this.datos?.resumen?.presupuestado ?? 0);
+    const usaReferencia = this.datos?.encabezado?.tieneCronograma === false && totalPresupuesto > 0;
     const valores = semanas.flatMap(s => [s.realAcumulado, s.presupuestoAcumulado])
       .filter((v: any) => v !== null && v !== undefined).map(Number);
+    if (usaReferencia) valores.push(totalPresupuesto);
     const { paso: pasoY, techo: maxValor } = this.escalaLimpia(Math.max(1, ...valores));
     const x = (semana: number) => izquierda + (semana / maxSemana) * ancho;
     const y = (valor: number) => arriba + alto - (valor / maxValor) * alto;
+    this.referenciaTotal = usaReferencia ? { valor: totalPresupuesto, y: y(totalPresupuesto) } : null;
 
     const reales = semanas.filter(s => s.realAcumulado !== null)
       .map(s => ({ x: x(Number(s.semana)), y: y(Number(s.realAcumulado)) }));

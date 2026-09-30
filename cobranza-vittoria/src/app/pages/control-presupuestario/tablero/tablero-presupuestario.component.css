@@ -421,3 +421,55 @@
     width: 100%;
   }
 }
+
+.referencia-texto {
+  font-size: 11px;
+  fill: var(--viz-ink-2);
+}
+
+/* Drill-down por rama */
+.tablero-ruta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  margin: 0 0 8px;
+  font-size: 12px;
+}
+
+.tablero-ruta__item,
+.rubro-enlace {
+  border: none;
+  background: transparent;
+  padding: 2px 4px;
+  font: inherit;
+  color: #1f3864;
+  cursor: pointer;
+  border-radius: 4px;
+  text-align: left;
+}
+
+.tablero-ruta__item:hover,
+.rubro-enlace:hover {
+  background: #eef2f8;
+}
+
+.tablero-ruta__item--actual {
+  color: var(--viz-ink);
+  font-weight: 600;
+}
+
+.tablero-ruta__sep {
+  color: var(--viz-muted);
+}
+
+.tablero-ayuda {
+  margin: 0 0 8px;
+  font-size: 12px;
+  color: var(--viz-ink-2);
+}
+
+.dona__segmento--navegable,
+.fila-navegable {
+  cursor: pointer;
+}

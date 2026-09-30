@@ -119,7 +119,9 @@
       <button type="button" class="btn btn-secondary btn-sm" [disabled]="!versionEditable"
         (click)="abrirCargaCompleta()">Carga completa</button>
       <button type="button" class="btn btn-secondary btn-sm" [disabled]="!versionEditable"
-        (click)="abrirImportar()">Importar CSV</button>
+        (click)="abrirImportar()">Importar CSV/XLSX</button>
+      <button type="button" class="btn btn-secondary btn-sm" [disabled]="!versionEditable"
+        (click)="abrirImportarEstructura()">Importar estructura (Excel)</button>
       <button type="button" class="btn btn-success btn-sm" [disabled]="!versionAprobable"
         (click)="aprobarVersion()">Aprobar versión</button>
       <button type="button" class="btn btn-danger btn-sm" [disabled]="!versionEditable"
@@ -130,12 +132,31 @@
       Esta versión ya no es editable. Crea una nueva versión para modificar montos.
     </div>
 
-    <div *ngIf="cargandoDetalles" class="empty-state">Cargando montos...</div>
-    <div *ngIf="!cargandoDetalles && !detalles.length" class="empty-state">
+    <div class="vista-toggle" role="group" aria-label="Vista de los montos">
+      <button type="button" class="vista-toggle__btn" [class.vista-toggle__btn--activo]="vistaVersion === 'tabla'"
+        [attr.aria-pressed]="vistaVersion === 'tabla'" (click)="cambiarVistaVersion('tabla')">Lista</button>
+      <button type="button" class="vista-toggle__btn" [class.vista-toggle__btn--activo]="vistaVersion === 'arbol'"
+        [attr.aria-pressed]="vistaVersion === 'arbol'" (click)="cambiarVistaVersion('arbol')">Árbol con subtotales</button>
+    </div>
+
+    <div *ngIf="resumenEstructura" class="alerta-ok">
+      Estructura importada: {{ resumenEstructura.partidasCreadas }} partida(s) nueva(s) en el catálogo,
+      {{ resumenEstructura.agregados }} agregada(s) y {{ resumenEstructura.actualizados }} actualizada(s)<span
+        *ngIf="resumenEstructura.eliminados">, {{ resumenEstructura.eliminados }} quitada(s)</span>.
+      La versión tiene {{ resumenEstructura.partidasEnVersion }} partidas por un total de
+      {{ simbolo }} {{ resumenEstructura.montoTotal | number:'1.2-2' }}. Revisa el árbol antes de aprobar.
+    </div>
+
+    <app-arbol-presupuestario *ngIf="vistaVersion === 'arbol'" modo="version"
+      [idPresupuesto]="seleccionado.idPresupuesto" [idVersion]="versionSeleccionada.idPresupuestoVersion"
+      [recarga]="recargaArbol" (abrirHoja)="verMovimientosNodo($event)"></app-arbol-presupuestario>
+
+    <div *ngIf="vistaVersion === 'tabla' && cargandoDetalles" class="empty-state">Cargando montos...</div>
+    <div *ngIf="vistaVersion === 'tabla' && !cargandoDetalles && !detalles.length" class="empty-state">
       Esta versión no tiene partidas asignadas.
     </div>
 
-    <div *ngIf="!cargandoDetalles && detalles.length" class="table-wrap">
+    <div *ngIf="vistaVersion === 'tabla' && !cargandoDetalles && detalles.length" class="table-wrap">
       <table>
         <thead>
           <tr>
@@ -236,6 +257,22 @@
       {{ guardando ? 'Guardando…' : 'Guardar presupuesto' }}
     </button>
     <button class="btn btn-ghost" (click)="cerrarModales()">Cancelar</button>
+  </div>
+</section>
+
+<!-- Confirmación de inactivar un presupuesto con registros asociados -->
+<div class="design-modal-backdrop design-modal-backdrop--top" *ngIf="modalConfirmarInactivar"
+  (click)="cancelarInactivacion()"></div>
+<section class="panel panel--form design-modal-card design-modal-card--top" *ngIf="modalConfirmarInactivar"
+  role="alertdialog" aria-labelledby="titulo-inactivar" (click)="$event.stopPropagation()">
+  <button type="button" class="modal-close" (click)="cancelarInactivacion()" aria-label="Cerrar">&times;</button>
+  <div class="panel-title" id="titulo-inactivar">¿Inactivar el presupuesto?</div>
+  <p class="modal-nota modal-nota--aviso">{{ mensajeInactivar }}</p>
+  <div class="toolbar toolbar--compact">
+    <button class="btn btn-danger" [disabled]="guardando" (click)="confirmarInactivacion()">
+      {{ guardando ? 'Inactivando…' : 'Sí, inactivar' }}
+    </button>
+    <button class="btn btn-ghost" [disabled]="guardando" (click)="cancelarInactivacion()">Cancelar</button>
   </div>
 </section>
 
@@ -539,15 +576,101 @@
       <table>
         <thead>
           <tr>
-            <th>Fila</th>
+            <th title="Fila en la hoja de Excel, contando el encabezado">Fila Excel</th>
             <th>Columna</th>
+            <th>Código</th>
             <th>Error</th>
           </tr>
         </thead>
         <tbody>
           <tr *ngFor="let e of erroresImportar">
-            <td>{{ e.fila }}</td>
+            <td>{{ filaExcel(e.fila) }}</td>
             <td>{{ e.campo || '—' }}</td>
+            <td><code>{{ e.codigoError || '—' }}</code></td>
+            <td>{{ e.mensaje }}</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<!-- Importación de estructura: Excel jerárquico de las áreas (niveles + montos de las hojas) -->
+<div class="design-modal-backdrop" *ngIf="modalEstructura" (click)="cerrarModales()"></div>
+<section class="panel panel--form design-modal-card design-modal-card--wide" *ngIf="modalEstructura"
+  (click)="$event.stopPropagation()">
+  <button type="button" class="modal-close" (click)="cerrarModales()" aria-label="Cerrar">&times;</button>
+  <div class="panel-title">Importar estructura · versión {{ versionSeleccionada?.numeroVersion }}</div>
+  <p class="modal-nota">
+    Sube el presupuesto con su jerarquía de partidas. Se crean en el catálogo las partidas que falten (categorías e
+    hijas) y se cargan los montos de las partidas finales en esta versión. Si una fila tiene un error, no se importa
+    nada.
+  </p>
+
+  <div class="estructura-ayuda">
+    <ul>
+      <li><strong>Código:</strong> una columna <code>Codigo</code> con texto (<code>1.1.3</code>) o columnas
+        <code>Nivel 1</code>, <code>Nivel 2</code>… <code>Nivel N</code>. Un 0 o una celda vacía cierran el código:
+        <code>1 | 1 | 3 | 0 | 0</code> → <code>1.1.3</code>.</li>
+      <li><strong>Nombre</strong> (o <code>Descripción</code>): obligatorio.</li>
+      <li><strong>Monto</strong> (o <code>Total</code>): obligatorio en las partidas finales (se acepta 0). Se redondea al céntimo, así que los
+        montos calculados con fórmulas se aceptan tal cual. En las
+        categorías que tienen hijas va vacío o en 0: su total se calcula con la suma de sus hijas.</li>
+      <li><strong>Tipo</strong> (opcional): si falta, se hereda del padre. Una categoría raíz nueva debe traerlo.</li>
+      <li><strong>Seccion</strong> (opcional, solo en partidas finales) y <strong>Observacion</strong> (opcional).
+        Las demás columnas (<code>Und.</code>, <code>Metrado</code>, <code>Precio</code>, <code>Subtotal</code>) se
+        ignoran.</li>
+      <li>Cada categoría debe venir en el archivo o existir ya en el catálogo. Un código existente se reutiliza si
+        tiene el mismo nombre y el mismo padre.</li>
+    </ul>
+  </div>
+
+  <div class="toolbar toolbar--compact">
+    <button type="button" class="btn btn-secondary btn-sm" [disabled]="descargandoPlantilla || guardando"
+      (click)="descargarPlantilla('xlsx', 'estructura')">Descargar plantilla Excel</button>
+    <button type="button" class="btn btn-ghost btn-sm" [disabled]="descargandoPlantilla || guardando"
+      (click)="descargarPlantilla('csv', 'estructura')">Plantilla CSV</button>
+  </div>
+
+  <div class="form-grid one">
+    <div class="field">
+      <label>Archivo (XLSX recomendado, CSV · máx. 5 MB)</label>
+      <input type="file" accept=".xlsx,.xls,.csv" [disabled]="guardando" (change)="onArchivoImportar($event)" />
+      <small class="field-hint">
+        En Excel usa las columnas de nivel o escribe el código como texto: Excel convierte <code>1.1.1</code> en
+        número o fecha.
+      </small>
+    </div>
+    <label class="check-inline">
+      <input type="checkbox" [(ngModel)]="quitarAusentesImportar" [disabled]="guardando" />
+      Quitar de la versión las partidas que no vienen en el archivo
+    </label>
+  </div>
+
+  <div class="toolbar toolbar--compact">
+    <button class="btn btn-primary" [disabled]="!archivoImportar || guardando" (click)="importarEstructura()">
+      {{ guardando ? 'Importando…' : 'Importar estructura' }}
+    </button>
+    <button class="btn btn-ghost" [disabled]="guardando" (click)="cerrarModales()">Cerrar</button>
+  </div>
+
+  <div *ngIf="erroresImportar.length" class="import-errores">
+    <div class="alerta-error">{{ mensajeErrorImportar }}</div>
+    <div class="table-wrap import-errores__tabla">
+      <table>
+        <thead>
+          <tr>
+            <th title="Fila en la hoja de Excel, contando el encabezado">Fila Excel</th>
+            <th>Columna</th>
+            <th>Código</th>
+            <th>Error</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr *ngFor="let e of erroresImportar">
+            <td>{{ filaExcel(e.fila) }}</td>
+            <td>{{ e.campo || '—' }}</td>
+            <td><code>{{ e.codigoError || '—' }}</code></td>
             <td>{{ e.mensaje }}</td>
           </tr>
         </tbody>

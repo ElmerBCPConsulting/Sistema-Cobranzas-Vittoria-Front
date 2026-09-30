@@ -14,6 +14,57 @@ export interface ReporteFiltro {
 }
 
 /**
+ * Nodo del árbol de partidas. En un padre los montos son la suma de sus hojas.
+ * Las hojas traen los ids del detalle para abrir sus movimientos (null si suman varios presupuestos).
+ */
+export interface NodoArbol {
+  idCatalogoPartida: number;
+  codigo: string;
+  nombre: string;
+  idPartidaPadre: number | null;
+  nivel: number;
+  esHoja: boolean;
+  cantidadHijas: number;
+  cantidadHojas: number;
+  montoPresupuestado: number;
+  montoComprometido: number;
+  montoEjecutado: number;
+  saldoDisponible: number;
+  porcentajeComprometido: number;
+  porcentajeEjecutado: number;
+  excedido: boolean;
+  partidasExcedidas: number;
+  idPresupuesto?: number | null;
+  idPresupuestoVersion?: number | null;
+  idPresupuestoDetalle?: number | null;
+}
+
+/** Respuesta de /consultas/arbol y /versiones/{id}/arbol; nodos es una lista plana en preorden. */
+export interface ArbolPresupuestario {
+  encabezado: {
+    idCentroCosto: number;
+    codigoCentroCosto: string;
+    nombreCentroCosto: string;
+    idPresupuesto: number | null;
+    idPresupuestoVersion: number | null;
+    estadoPresupuesto: string | null;
+    codigoMoneda: string;
+    simboloMoneda: string;
+  };
+  totales: {
+    montoPresupuestado: number;
+    montoComprometido: number;
+    montoEjecutado: number;
+    saldoDisponible: number;
+    porcentajeComprometido: number;
+    porcentajeEjecutado: number;
+    cantidadPartidas: number;
+    partidasExcedidas: number;
+  };
+  nodos: NodoArbol[];
+}
+
+/**
  * Cliente del contrato de API de Control Presupuestario. Versiones y partidas de versión son
  * recursos subordinados del presupuesto: sus rutas llevan /presupuestos/{id}/versiones/{versionId}.
  */
@@ -135,13 +186,18 @@ export class ControlPresupuestarioService {
     });
   }
 
-  actualizarPresupuesto(id: number, dto: any) {
+  /**
+   * Inactivar un presupuesto con registros asociados responde 409 PRESUPUESTO_CON_REGISTROS;
+   * se reenvía con confirmarInactivacion = true cuando el usuario lo confirma.
+   */
+  actualizarPresupuesto(id: number, dto: any, confirmarInactivacion = false) {
     return this.api.http.put<any>(`${this.base}/presupuestos/${id}`, {
       nombre: (dto.nombre ?? '').toString().trim(),
       activo: !!dto.activo,
       descripcion: this.texto(dto.descripcion),
       fechaInicio: this.fecha(dto.fechaInicio),
-      fechaFin: this.fecha(dto.fechaFin)
+      fechaFin: this.fecha(dto.fechaFin),
+      confirmarInactivacion
     });
   }
 
@@ -218,6 +274,29 @@ export class ControlPresupuestarioService {
       { responseType: 'blob', observe: 'response' });
   }
 
+  /**
+   * Importación jerárquica (formato de las áreas): crea en el catálogo las partidas que falten
+   * y carga los montos de las hojas en la versión borrador. Todo o nada.
+   */
+  importarEstructura(idPresupuesto: number, idVersion: number, archivo: File, quitarAusentes: boolean) {
+    const form = new FormData();
+    form.append('archivo', archivo);
+    form.append('quitarAusentes', String(quitarAusentes));
+    return this.api.http.post<any>(`${this.rutaVersion(idPresupuesto, idVersion)}/partidas/importar-estructura`, form);
+  }
+
+  /** Plantilla con el árbol completo del catálogo activo y los montos actuales de la versión. */
+  plantillaEstructura(idPresupuesto: number, idVersion: number, formato: 'csv' | 'xlsx') {
+    return this.api.http.get(
+      `${this.rutaVersion(idPresupuesto, idVersion)}/partidas/plantilla-estructura?formato=${formato}`,
+      { responseType: 'blob', observe: 'response' });
+  }
+
+  /** Árbol de partidas con subtotales de una versión en cualquier estado. */
+  arbolVersion(idPresupuesto: number, idVersion: number) {
+    return this.api.http.get<ArbolPresupuestario>(`${this.rutaVersion(idPresupuesto, idVersion)}/arbol`);
+  }
+
   actualizarDetalle(idPresupuesto: number, idVersion: number, idDetalle: number, dto: any) {
     return this.api.http.put<any>(`${this.rutaVersion(idPresupuesto, idVersion)}/partidas/${idDetalle}`, {
       montoPresupuestado: Number(dto.montoPresupuestado ?? 0),
@@ -271,9 +350,21 @@ export class ControlPresupuestarioService {
     return this.api.http.get<any[]>(`${this.base}/consultas/presupuesto-vs-ejecutado${this.query(filtro)}`);
   }
 
-  /** Dashboard de un centro de costo: distribución por rubro y curva acumulada real vs presupuesto. */
-  dashboard(idCentroCosto: number, idPresupuesto?: number | null) {
-    return this.api.http.get<any>(`${this.base}/consultas/dashboard${this.query({ idCentroCosto, idPresupuesto })}`);
+  /**
+   * Dashboard de un centro de costo: distribución por rubro y curva acumulada real vs presupuesto.
+   * Con nivel, cada partida final se agrupa en su categoría ancestra de ese nivel (1 = raíces).
+   * Con idPartidaPadre todo el tablero se limita a esa rama (encabezado.rama trae el camino).
+   */
+  dashboard(idCentroCosto: number, idPresupuesto?: number | null, nivel?: number | null,
+    idPartidaPadre?: number | null) {
+    return this.api.http.get<any>(
+      `${this.base}/consultas/dashboard${this.query({ idCentroCosto, idPresupuesto, nivel, idPartidaPadre })}`);
+  }
+
+  /** Árbol vigente de un centro de costo: presupuestos activos con versión aprobada. */
+  arbolVigente(idCentroCosto: number, idPresupuesto?: number | null) {
+    return this.api.http.get<ArbolPresupuestario>(
+      `${this.base}/consultas/arbol${this.query({ idCentroCosto, idPresupuesto })}`);
   }
 
   gastosPorPartida(filtro: ReporteFiltro = {}) {

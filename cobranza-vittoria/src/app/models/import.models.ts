@@ -52,7 +52,14 @@ export type ImportFilaErrorCodigo =
   | 'REGLA_NEGOCIO'
   | 'ERROR_VALIDACION'
   | 'VALOR_DUPLICADO_EN_ARCHIVO'
-  | 'VALOR_YA_EXISTE_EN_BD';
+  | 'VALOR_YA_EXISTE_EN_BD'
+  | 'FK_NO_EXISTE'
+  // Importación de estructura jerárquica de presupuesto.
+  | 'NIVELES_INVALIDOS'
+  | 'PADRE_NO_EXISTE'
+  | 'JERARQUIA_DISTINTA'
+  | 'NOMBRE_DISTINTO'
+  | 'PADRE_CON_MONTO';
 
 export interface ImportFilaError {
   fila: number;

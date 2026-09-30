@@ -398,6 +398,14 @@ export class GastosSeccionPage implements OnInit {
 
   // ------------------------------------------------------- confirmar / anular
 
+  /**
+   * Gasto histórico migrado: vive en un presupuesto HIST-… inactivo. Se puede anular,
+   * pero confirmarlo daría 409 RECURSO_INACTIVO, así que no se ofrece.
+   */
+  esHistorico(row: any): boolean {
+    return String(row?.codigoPresupuesto ?? '').toUpperCase().startsWith('HIST-');
+  }
+
   pedirConfirmacion(accion: 'confirmar' | 'anular', row: any): void {
     this.modalConfirmacion = { accion, row };
     this.cdr.detectChanges();
@@ -406,6 +414,7 @@ export class GastosSeccionPage implements OnInit {
   ejecutarConfirmacion(): void {
     if (!this.modalConfirmacion) return;
     const { accion, row } = this.modalConfirmacion;
+    const estabaConfirmado = row.estado === 'CONFIRMADO';
     this.guardando = true;
     const peticion = accion === 'confirmar'
       ? this.gastos.confirmar(row.idGastoDirecto)
@@ -416,7 +425,7 @@ export class GastosSeccionPage implements OnInit {
         this.modalConfirmacion = null;
         this.notifications.show(accion === 'confirmar'
           ? 'Gasto confirmado: el monto quedó ejecutado.'
-          : 'Gasto anulado: se devolvió el monto con un ajuste.', 'success');
+          : estabaConfirmado ? 'Gasto anulado: se devolvió el monto con un ajuste.' : 'Gasto anulado.', 'success');
         this.load();
       },
       error: err => {

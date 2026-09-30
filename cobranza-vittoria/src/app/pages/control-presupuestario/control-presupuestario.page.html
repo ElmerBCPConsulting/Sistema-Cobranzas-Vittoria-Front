@@ -23,6 +23,15 @@
         </option>
       </select>
     </div>
+    <div class="field">
+      <label>Nivel de anidamiento</label>
+      <select [(ngModel)]="filtroNivel" [disabled]="!idCentroCostoDashboard">
+        <option value="">Partidas finales</option>
+        <option *ngFor="let n of nivelesDisponibles" [value]="n">
+          Nivel {{ n }}{{ n === 1 ? ' (categorías principales)' : '' }}
+        </option>
+      </select>
+    </div>
     <div class="field field--check">
       <label>
         <input type="checkbox" [(ngModel)]="soloExcedidos" (change)="recargar()" />
@@ -33,10 +42,20 @@
 </section>
 
 <app-tablero-presupuestario *ngIf="idCentroCostoDashboard" [idCentroCosto]="idCentroCostoDashboard"
-  [idPresupuesto]="idPresupuestoDashboard"></app-tablero-presupuestario>
+  [idPresupuesto]="idPresupuestoDashboard" [nivel]="nivelDashboard"
+  (nivelMaximo)="onNivelMaximo($event)"></app-tablero-presupuestario>
 <section *ngIf="!idCentroCostoDashboard" class="panel tablero-invitacion">
   Elige un centro de costo para ver el dashboard: distribución del gasto por rubro y evolución del gasto real
   frente al presupuesto.
+</section>
+
+<section class="panel" *ngIf="idCentroCostoDashboard">
+  <div class="panel-title">Árbol de partidas</div>
+  <p class="modal-nota">Presupuesto vigente (versiones aprobadas) con subtotales por categoría. Haz clic en una
+    categoría para abrirla y en una partida para ver sus movimientos.</p>
+  <app-arbol-presupuestario modo="vigente" [idCentroCosto]="idCentroCostoDashboard"
+    [idPresupuesto]="idPresupuestoDashboard" [nivelSincronizado]="nivelDashboard"
+    (abrirHoja)="verMovimientosNodo($event)"></app-arbol-presupuestario>
 </section>
 
 <div class="kpi-grid" *ngIf="totales">

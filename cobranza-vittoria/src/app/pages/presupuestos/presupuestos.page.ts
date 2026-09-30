@@ -1,9 +1,10 @@
 import { ChangeDetectorRef, Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { ControlPresupuestarioService } from '../../core/services/control-presupuestario.service';
+import { ControlPresupuestarioService, NodoArbol } from '../../core/services/control-presupuestario.service';
 import { NotificationService } from '../../core/services/notification.service';
 import { descargarArchivo, extraerFilenameDeContentDisposition } from '../../core/utils/file-download.util';
+import { ArbolPresupuestarioComponent } from '../control-presupuestario/arbol/arbol-presupuestario.component';
 
 /** Fila editable del formulario de carga completa. */
 interface FilaCarga {
@@ -18,7 +19,7 @@ interface FilaCarga {
 @Component({
   standalone: true,
   selector: 'app-presupuestos-page',
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, ArbolPresupuestarioComponent],
   templateUrl: './presupuestos.page.html',
   styleUrl: './presupuestos.page.css'
 })
@@ -55,6 +56,16 @@ export class PresupuestosPage implements OnInit {
   modalAjuste = false;
   modalCarga = false;
   modalImportar = false;
+  modalEstructura = false;
+  /** Confirmación de inactivar un presupuesto con registros (409 PRESUPUESTO_CON_REGISTROS). */
+  modalConfirmarInactivar = false;
+  mensajeInactivar = '';
+
+  /** Montos de la versión como lista plana o como árbol con subtotales. */
+  vistaVersion: 'tabla' | 'arbol' = 'tabla';
+  recargaArbol = 0;
+  /** Resultado de la última importación de estructura, visible sobre el árbol. */
+  resumenEstructura: any = null;
 
   // Carga completa: todas las partidas hoja activas con su monto.
   filasCarga: FilaCarga[] = [];
@@ -256,6 +267,7 @@ export class PresupuestosPage implements OnInit {
 
   seleccionarVersion(version: any): void {
     this.versionSeleccionada = version;
+    this.resumenEstructura = null;
     this.cargarDetalles();
   }
 
@@ -509,7 +521,7 @@ export class PresupuestosPage implements OnInit {
     this.cdr.detectChanges();
   }
 
-  guardarPresupuesto(): void {
+  guardarPresupuesto(confirmarInactivacion = false): void {
     if (!this.esEdicion) {
       if (!this.form.idCentroCosto) {
         this.notifications.show('Selecciona el centro de costo.', 'info');
@@ -535,22 +547,39 @@ export class PresupuestosPage implements OnInit {
 
     this.guardando = true;
     const peticion = this.esEdicion
-      ? this.cp.actualizarPresupuesto(this.form.idPresupuesto, this.form)
+      ? this.cp.actualizarPresupuesto(this.form.idPresupuesto, this.form, confirmarInactivacion)
       : this.cp.crearPresupuesto(this.form);
 
     peticion.subscribe({
       next: () => {
         this.guardando = false;
         this.modalPresupuesto = false;
+        this.modalConfirmarInactivar = false;
         this.notifications.show('Presupuesto guardado correctamente.', 'success');
         this.load();
       },
       error: err => {
         this.guardando = false;
-        this.notifications.show(err?.error?.message || 'No se pudo guardar el presupuesto.', 'error');
+        // Con gastos, movimientos o requerimientos el backend pide confirmar la inactivación.
+        if (err?.status === 409 && err?.error?.error === 'PRESUPUESTO_CON_REGISTROS' && !confirmarInactivacion) {
+          this.mensajeInactivar = err.error.message || 'Este presupuesto tiene registros asociados. ¿Inactivarlo de todos modos?';
+          this.modalConfirmarInactivar = true;
+        } else {
+          this.notifications.show(err?.error?.message || 'No se pudo guardar el presupuesto.', 'error');
+        }
         this.cdr.detectChanges();
       }
     });
+  }
+
+  confirmarInactivacion(): void {
+    this.guardarPresupuesto(true);
+  }
+
+  cancelarInactivacion(): void {
+    if (this.guardando) return;
+    this.modalConfirmarInactivar = false;
+    this.cdr.detectChanges();
   }
 
   cerrarModales(): void {
@@ -563,6 +592,8 @@ export class PresupuestosPage implements OnInit {
     this.modalAjuste = false;
     this.modalCarga = false;
     this.modalImportar = false;
+    this.modalEstructura = false;
+    this.modalConfirmarInactivar = false;
     this.cdr.detectChanges();
   }
 
@@ -708,15 +739,20 @@ export class PresupuestosPage implements OnInit {
     });
   }
 
-  descargarPlantilla(formato: 'csv' | 'xlsx'): void {
+  descargarPlantilla(formato: 'csv' | 'xlsx', tipo: 'montos' | 'estructura' = 'montos'): void {
     if (!this.versionSeleccionada || this.descargandoPlantilla) return;
     this.descargandoPlantilla = true;
-    this.cp.plantillaPresupuesto(this.seleccionado.idPresupuesto, this.versionSeleccionada.idPresupuestoVersion, formato).subscribe({
+    const idPresupuesto = this.seleccionado.idPresupuesto;
+    const idVersion = this.versionSeleccionada.idPresupuestoVersion;
+    const peticion = tipo === 'estructura'
+      ? this.cp.plantillaEstructura(idPresupuesto, idVersion, formato)
+      : this.cp.plantillaPresupuesto(idPresupuesto, idVersion, formato);
+    peticion.subscribe({
       next: resp => {
         this.descargandoPlantilla = false;
         if (resp.body) {
           const nombre = extraerFilenameDeContentDisposition(resp.headers.get('Content-Disposition'),
-            `plantilla-presupuesto.${formato}`);
+            tipo === 'estructura' ? `plantilla-estructura.${formato}` : `plantilla-presupuesto.${formato}`);
           descargarArchivo(resp.body, nombre);
         }
         this.cdr.detectChanges();
@@ -727,6 +763,84 @@ export class PresupuestosPage implements OnInit {
         this.cdr.detectChanges();
       }
     });
+  }
+
+  // ------------------------------------------------- importación de estructura
+
+  /** Excel jerárquico de las áreas: crea las partidas que falten y carga los montos de las hojas. */
+  abrirImportarEstructura(): void {
+    if (!this.versionEditable) {
+      this.notifications.show('Solo se puede importar la estructura en una versión en borrador.', 'info');
+      return;
+    }
+    this.archivoImportar = null;
+    this.quitarAusentesImportar = false;
+    this.limpiarResultadoImportar();
+    this.modalEstructura = true;
+    this.cdr.detectChanges();
+  }
+
+  importarEstructura(): void {
+    if (!this.versionSeleccionada || !this.archivoImportar) return;
+    this.guardando = true;
+    this.limpiarResultadoImportar();
+    this.cp.importarEstructura(this.seleccionado.idPresupuesto, this.versionSeleccionada.idPresupuestoVersion,
+      this.archivoImportar, this.quitarAusentesImportar).subscribe({
+      next: r => {
+        this.guardando = false;
+        this.modalEstructura = false;
+        this.resumenEstructura = r;
+        this.notifications.show(
+          `Estructura importada: ${r?.partidasCreadas ?? 0} partida(s) nueva(s) en el catálogo.`, 'success');
+        // Se abre el árbol de la versión para validar padres, hijas y subtotales.
+        this.vistaVersion = 'arbol';
+        this.recargaArbol++;
+        this.cargarDetalles();
+        this.recargarPartidas();
+      },
+      error: err => {
+        this.guardando = false;
+        this.erroresImportar = Array.isArray(err?.error?.errores) ? err.error.errores : [];
+        this.mensajeErrorImportar = err?.error?.message || 'No se pudo importar el archivo.';
+        if (!this.erroresImportar.length) this.notifications.show(this.mensajeErrorImportar, 'error');
+        this.cdr.detectChanges();
+      }
+    });
+  }
+
+  /** La importación de estructura puede crear partidas: se refresca el catálogo de hojas. */
+  private recargarPartidas(): void {
+    this.cp.partidas({ activo: true, esHoja: true }).subscribe({
+      next: rows => {
+        this.partidas = rows ?? [];
+        this.cdr.detectChanges();
+      }
+    });
+  }
+
+  // ------------------------------------------------------------------- árbol
+
+  cambiarVistaVersion(vista: 'tabla' | 'arbol'): void {
+    this.vistaVersion = vista;
+    this.cdr.detectChanges();
+  }
+
+  /** Hoja del árbol de la versión: se abre el historial de su detalle. */
+  verMovimientosNodo(nodo: NodoArbol): void {
+    const detalle = this.detalles.find(d =>
+      (nodo.idPresupuestoDetalle && d.idPresupuestoDetalle === nodo.idPresupuestoDetalle)
+      || d.idCatalogoPartida === nodo.idCatalogoPartida);
+    if (!detalle) {
+      this.notifications.show('No se encontró el detalle de esta partida en la versión.', 'info');
+      return;
+    }
+    this.verMovimientos(detalle);
+  }
+
+  /** errores[].fila cuenta solo filas de datos; en la hoja de Excel se suma el encabezado. */
+  filaExcel(fila: any): number | string {
+    const n = Number(fila);
+    return isNaN(n) ? (fila ?? '—') : n + 1;
   }
 
   private soloFecha(valor: any): string {
