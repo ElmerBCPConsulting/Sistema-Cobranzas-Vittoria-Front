@@ -76,11 +76,17 @@
             <td>{{ row.especialidades || row.especialidad || '-' }}</td>
             <td>{{ row.proveedor || '-' }}</td>
             <td>{{ row.nombreProyecto || '-' }}</td>
-            <td><span class="badge badge--pending">{{ row.estado }}</span></td>
+            <td>
+              <span class="badge" [class.badge--pending]="estadoOc(row) === 'REGISTRADA'"
+                [class.badge--ok]="estadoOc(row) === 'APROBADA' || estadoOc(row) === 'ATENDIDA'"
+                [class.badge--danger]="estadoOc(row) === 'ANULADA'"
+                [class.badge--neutral]="estadoOc(row) === 'CERRADA'">{{ row.estado }}</span>
+            </td>
             <td class="actions-col--select">
               <select class="actions-select" (change)="onAccionOrdenGenerada($event, row)">
                 <option value="">Acciones</option>
                 <option value="detalle">Detalle</option>
+                <option *ngFor="let a of accionesEstado(row)" [value]="a">{{ etiquetaAccion[a] }}</option>
                 <option value="pdf">Exportar PDF</option>
                 <option value="excel">Exportar Excel</option>
               </select>
@@ -169,6 +175,10 @@
     <div class="toolbar" style="margin-bottom:14px;">
       <span class="list-chip">{{ detalleOc.ordenCompra?.numeroOrdenCompra }}</span>
       <span class="list-chip">{{ detalleOc.ordenCompra?.estado }}</span>
+      <button *ngFor="let a of accionesEstado(detalleOc.ordenCompra)" type="button" class="btn btn-sm"
+        [class.btn-success]="a === 'APROBADA'" [class.btn-danger]="a === 'ANULADA'"
+        [class.btn-secondary]="a === 'CERRADA'" (click)="pedirCambioEstado(detalleOc.ordenCompra, a)">
+        {{ etiquetaAccion[a] }}</button>
       <button class="btn btn-secondary btn-sm" type="button" (click)="exportarExcelDetalleOc()">Exportar Excel
         proveedor</button>
       <button class="btn btn-primary btn-sm" type="button" (click)="exportarPdfDetalleOc()">Exportar PDF
@@ -240,5 +250,31 @@
   <div class="toolbar toolbar--compact">
     <button class="btn btn-primary" (click)="guardarNuevoProveedor()">Guardar proveedor</button>
     <button class="btn btn-ghost" (click)="cerrarProveedorModal()">Cancelar</button>
+  </div>
+</section>
+<!-- Cambio de estado de la O.C.: aprobar, anular o cerrar -->
+<div class="design-modal-backdrop oc-estado-backdrop" *ngIf="cambioEstado" (click)="cerrarCambioEstado()"></div>
+<section class="panel panel--form design-modal-card oc-estado-card" *ngIf="cambioEstado" role="alertdialog"
+  aria-labelledby="titulo-estado-oc" (click)="$event.stopPropagation()">
+  <button type="button" class="modal-close" (click)="cerrarCambioEstado()" aria-label="Cerrar"
+    [disabled]="cambiandoEstado">×</button>
+  <div class="panel-title" id="titulo-estado-oc">
+    {{ etiquetaAccion[cambioEstado.estadoNuevo] }} O.C. {{ cambioEstado.oc.numeroOrdenCompra }}
+  </div>
+  <p class="oc-estado-nota">{{ notaCambioEstado }}</p>
+
+  <div class="field">
+    <label>Observación (opcional)</label>
+    <textarea rows="2" maxlength="500" [(ngModel)]="cambioEstado.observacion" [disabled]="cambiandoEstado"></textarea>
+  </div>
+
+  <div class="toolbar" style="margin-top:14px;">
+    <button type="button" class="btn" [class.btn-success]="cambioEstado.estadoNuevo === 'APROBADA'"
+      [class.btn-danger]="cambioEstado.estadoNuevo === 'ANULADA'"
+      [class.btn-primary]="cambioEstado.estadoNuevo === 'CERRADA'" [disabled]="cambiandoEstado"
+      (click)="confirmarCambioEstado()">
+      {{ cambiandoEstado ? 'Procesando…' : etiquetaAccion[cambioEstado.estadoNuevo] + ' O.C.' }}
+    </button>
+    <button type="button" class="btn btn-ghost" [disabled]="cambiandoEstado" (click)="cerrarCambioEstado()">Volver</button>
   </div>
 </section>
