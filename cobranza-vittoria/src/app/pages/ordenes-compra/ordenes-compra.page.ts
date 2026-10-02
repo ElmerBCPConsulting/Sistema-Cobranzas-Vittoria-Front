@@ -65,6 +65,29 @@ export class OrdenesCompraPage implements OnInit {
     private cdr: ChangeDetectorRef
   ) { }
 
+  // ----------------------------------------------------------------- precios
+
+  precioItem(item: any): number {
+    const precio = Number(item?.precioUnitario);
+    return isNaN(precio) || precio < 0 ? 0 : Math.round(precio * 100) / 100;
+  }
+
+  subtotalItem(item: any): number {
+    return Math.round(this.precioItem(item) * Number(item?.cantidad || 0) * 100) / 100;
+  }
+
+  get totalFormulario(): number {
+    return (this.form.items || []).reduce((acc: number, x: any) => acc + this.subtotalItem(x), 0);
+  }
+
+  /** Una OC sin precios tiene total 0: el precio se define en la Compra. */
+  textoTotalOc(oc: any): string {
+    const total = Number(oc?.total ?? oc?.Total ?? 0);
+    if (!(total > 0)) return 'Sin precio (se define en la Compra)';
+    const simbolo = oc?.simboloMoneda ?? oc?.SimboloMoneda ?? oc?.codigoMoneda ?? oc?.CodigoMoneda ?? '';
+    return `${simbolo} ${total.toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`.trim();
+  }
+
   // -------------------------------------------------------- estado de la O.C.
 
   estadoOc(oc: any): string {
@@ -300,7 +323,7 @@ export class OrdenesCompraPage implements OnInit {
           unidadMedida: it.unidadMedida,
           cantidad: Number(it.cantidad),
           idProveedor: null,
-          precioUnitario: 0
+          precioUnitario: null
         }));
 
         this.msg = 'RQ cargado para continuar flujo de O.C.';
@@ -403,9 +426,15 @@ export class OrdenesCompraPage implements OnInit {
         idMaterial: Number(x.idMaterial),
         cantidad: Number(x.cantidad),
         idProveedor: Number(x.idProveedor || 0),
-        precioUnitario: 0
+        // Opcional: 0 = sin precio. Con precio, al aprobar la OC el monto queda comprometido.
+        precioUnitario: this.precioItem(x)
       }))
     };
+
+    if ((this.form.items || []).some((x: any) => Number(x.precioUnitario) < 0)) {
+      this.msg = 'El precio unitario no puede ser negativo.';
+      return;
+    }
 
     if (!dto.idRequerimiento) { this.msg = 'Debes seleccionar un RQ enviado a O.C.'; return; }
     if (!dto.idProyecto) { this.msg = 'Debes seleccionar proyecto.'; return; }

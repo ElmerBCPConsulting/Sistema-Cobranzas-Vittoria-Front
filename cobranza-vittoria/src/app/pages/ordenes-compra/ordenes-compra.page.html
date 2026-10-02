@@ -64,6 +64,7 @@
             <th>Especialidades</th>
             <th>Proveedor</th>
             <th>Proyecto</th>
+            <th class="table-number">Total</th>
             <th>Estado</th>
             <th class="actions-col actions-col--select">Acciones</th>
           </tr>
@@ -76,6 +77,7 @@
             <td>{{ row.especialidades || row.especialidad || '-' }}</td>
             <td>{{ row.proveedor || '-' }}</td>
             <td>{{ row.nombreProyecto || '-' }}</td>
+            <td class="table-number" [class.sin-precio]="!(+row.total > 0)">{{ textoTotalOc(row) }}</td>
             <td>
               <span class="badge" [class.badge--pending]="estadoOc(row) === 'REGISTRADA'"
                 [class.badge--ok]="estadoOc(row) === 'APROBADA' || estadoOc(row) === 'ATENDIDA'"
@@ -136,6 +138,8 @@
               <th>Unidad</th>
               <th>Cantidad</th>
               <th class="provider-column">Proveedor</th>
+              <th class="precio-column">Precio unit. (opcional)</th>
+              <th class="table-number">Subtotal</th>
             </tr>
           </thead>
           <tbody>
@@ -150,9 +154,25 @@
                   <option *ngFor="let p of proveedores" [ngValue]="p.idProveedor">{{ p.razonSocial }}</option>
                 </select>
               </td>
+              <td class="precio-cell">
+                <input type="number" min="0" step="0.01" class="precio-input" [(ngModel)]="x.precioUnitario"
+                  placeholder="Sin precio" [attr.aria-label]="'Precio unitario de ' + x.material" />
+              </td>
+              <td class="table-number">{{ subtotalItem(x) > 0 ? (subtotalItem(x) | number:'1.2-2') : '—' }}</td>
             </tr>
           </tbody>
+          <tfoot *ngIf="totalFormulario > 0">
+            <tr>
+              <th colspan="6">Total estimado</th>
+              <th class="table-number">{{ totalFormulario | number:'1.2-2' }}</th>
+            </tr>
+          </tfoot>
         </table>
+      </div>
+      <div class="oc-form-note" style="margin-top:10px;">
+        El precio es opcional y va en la moneda del presupuesto de las partidas. Con precio, al aprobar la O.C. el monto
+        queda <strong>comprometido</strong> en el presupuesto; al aceptar la Compra se libera y se ejecuta el monto real.
+        Sin precio, el presupuesto se afecta recién al aceptar la Compra.
       </div>
     </div>
 
@@ -204,6 +224,8 @@
             <th>Unidad</th>
             <th>Cantidad</th>
             <th>Proveedor</th>
+            <th class="table-number">Precio unit.</th>
+            <th class="table-number">Subtotal</th>
           </tr>
         </thead>
         <tbody>
@@ -214,11 +236,19 @@
             <td>{{ item.unidadMedida }}</td>
             <td>{{ item.cantidad }}</td>
             <td>{{ item.proveedor || '-' }}</td>
+            <td class="table-number">{{ +item.precioUnitario > 0 ? (item.precioUnitario | number:'1.2-2') : '—' }}</td>
+            <td class="table-number">{{ +item.subtotal > 0 ? (item.subtotal | number:'1.2-2') : '—' }}</td>
           </tr>
           <tr *ngIf="!itemsDetalleOcFiltrados.length">
-            <td colspan="5" class="empty-row">No hay ítems para el proveedor seleccionado.</td>
+            <td colspan="7" class="empty-row">No hay ítems para el proveedor seleccionado.</td>
           </tr>
         </tbody>
+        <tfoot>
+          <tr>
+            <th colspan="6">Total</th>
+            <th class="table-number">{{ textoTotalOc(detalleOc.ordenCompra) }}</th>
+          </tr>
+        </tfoot>
       </table>
     </div>
   </div>

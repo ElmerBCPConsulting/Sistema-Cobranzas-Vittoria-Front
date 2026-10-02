@@ -94,3 +94,19 @@
   font-size: 13px;
   color: #374151;
 }
+
+/* Precio opcional por ítem */
+.precio-column {
+  min-width: 130px;
+}
+
+.precio-input {
+  width: 110px;
+  text-align: right;
+}
+
+.sin-precio {
+  color: #6b7280;
+  font-size: 12px;
+  white-space: normal;
+}
